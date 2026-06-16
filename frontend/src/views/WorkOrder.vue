@@ -4,7 +4,7 @@ import {
   NCard,
   NButton,
   NIcon,
-  NTable,
+  NDataTable,
   NTag,
   NProgress,
   NModal,
@@ -450,7 +450,7 @@ onMounted(() => {
     </div>
 
     <n-card class="content-card" title="待生产">
-      <n-table
+      <n-data-table
         :columns="tableColumns"
         :data="pendingOrders"
         :loading="loading"
@@ -461,7 +461,7 @@ onMounted(() => {
     </n-card>
 
     <n-card class="content-card" title="生产中">
-      <n-table
+      <n-data-table
         :columns="tableColumns"
         :data="inProgressOrders"
         :loading="loading"
@@ -472,7 +472,7 @@ onMounted(() => {
     </n-card>
 
     <n-card class="content-card" title="已完成">
-      <n-table
+      <n-data-table
         :columns="tableColumns"
         :data="completedOrders"
         :loading="loading"
@@ -742,7 +742,7 @@ onMounted(() => {
 
       <div class="detail-section">
         <h4 class="detail-section-title">工序详情</h4>
-        <n-table
+        <n-data-table
           :bordered="false"
           :data="currentDetail.processes"
           :columns="detailTableColumns"

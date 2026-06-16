@@ -4,7 +4,7 @@ import {
   NCard,
   NButton,
   NIcon,
-  NTable,
+  NDataTable,
   NTag,
   NProgress,
   NModal,
@@ -364,7 +364,7 @@ onMounted(() => {
             </n-button>
           </div>
 
-          <n-table
+          <n-data-table
             :columns="workOrderColumns"
             :data="workerWorkOrders"
             :loading="loading"
@@ -398,7 +398,7 @@ onMounted(() => {
                 </div>
               </div>
             </template>
-          </n-table>
+          </n-data-table>
         </n-card>
       </n-tab-pane>
 
@@ -421,7 +421,7 @@ onMounted(() => {
             </n-button>
           </div>
 
-          <n-table
+          <n-data-table
             :columns="reportColumns"
             :data="workReports"
             :loading="loading"
