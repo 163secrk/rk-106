@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.db.models import Sum
-from .models import Product, Process, WorkOrder, WorkOrderProcess, WorkReport, ReworkTask
+from .models import Product, Process, WorkOrder, WorkOrderProcess, WorkReport, ReworkTask, SalarySettlement, SalarySettlementDetail
 
 User = get_user_model()
 
@@ -393,3 +393,188 @@ class WorkerWorkOrderSerializer(serializers.ModelSerializer):
         worker = self.context['request'].user
         worker_processes = obj.processes.filter(workers=worker)
         return WorkerWorkOrderProcessSerializer(worker_processes, many=True, context=self.context).data
+
+
+class WorkReportTraceSerializer(serializers.ModelSerializer):
+    work_order_no = serializers.CharField(source='work_order.order_no', read_only=True)
+    process_name = serializers.CharField(source='work_order_process.process.name', read_only=True)
+    process_price = serializers.SerializerMethodField()
+    worker_name = serializers.CharField(source='worker.name', read_only=True)
+    status_name = serializers.CharField(source='get_status_display', read_only=True)
+    inspector_name = serializers.CharField(source='inspector.name', read_only=True, allow_null=True)
+    rework_count = serializers.SerializerMethodField()
+    has_rework_chain = serializers.SerializerMethodField()
+    subtotal = serializers.SerializerMethodField()
+    final_amount = serializers.SerializerMethodField()
+
+    class Meta:
+        model = WorkReport
+        fields = [
+            'id', 'work_order_no', 'process_name', 'process_price',
+            'worker_name', 'quantity', 'passed_quantity', 'rework_quantity', 'scrapped_quantity',
+            'status', 'status_name', 'inspector_name', 'inspection_time',
+            'inspection_remark', 'remark', 'created_at', 'updated_at',
+            'rework_count', 'has_rework_chain', 'subtotal', 'final_amount'
+        ]
+
+    def get_process_price(self, obj):
+        return float(obj.work_order_process.process.price)
+
+    def get_rework_count(self, obj):
+        count = 0
+        current = obj.parent_report
+        while current is not None:
+            count += 1
+            current = current.parent_report
+        return count
+
+    def get_has_rework_chain(self, obj):
+        return obj.rework_reports.exists() or obj.parent_report is not None
+
+    def get_subtotal(self, obj):
+        from decimal import Decimal
+        if obj.status != 'passed':
+            return 0.0
+        price = Decimal(str(obj.work_order_process.process.price))
+        quantity = Decimal(str(obj.passed_quantity))
+        return float((quantity * price).quantize(Decimal('0.0000')))
+
+    def get_final_amount(self, obj):
+        from decimal import Decimal, ROUND_HALF_UP
+        if obj.status != 'passed':
+            return 0.0
+        price = Decimal(str(obj.work_order_process.process.price))
+        quantity = Decimal(str(obj.passed_quantity))
+        subtotal = (quantity * price).quantize(Decimal('0.0000'))
+        return float(subtotal.quantize(Decimal('0.00'), rounding=ROUND_HALF_UP))
+
+
+class WorkReportTraceChainSerializer(serializers.ModelSerializer):
+    work_order_no = serializers.CharField(source='work_order.order_no', read_only=True)
+    process_name = serializers.CharField(source='work_order_process.process.name', read_only=True)
+    process_price = serializers.SerializerMethodField()
+    worker_name = serializers.CharField(source='worker.name', read_only=True)
+    status_name = serializers.CharField(source='get_status_display', read_only=True)
+    inspector_name = serializers.CharField(source='inspector.name', read_only=True, allow_null=True)
+    is_rework = serializers.SerializerMethodField()
+    chain_order = serializers.SerializerMethodField()
+
+    class Meta:
+        model = WorkReport
+        fields = [
+            'id', 'work_order_no', 'process_name', 'process_price',
+            'worker_name', 'quantity', 'passed_quantity', 'rework_quantity', 'scrapped_quantity',
+            'status', 'status_name', 'inspector_name', 'inspection_time',
+            'inspection_remark', 'remark', 'created_at', 'updated_at',
+            'is_rework', 'chain_order'
+        ]
+
+    def get_process_price(self, obj):
+        return float(obj.work_order_process.process.price)
+
+    def get_is_rework(self, obj):
+        return obj.parent_report is not None
+
+    def get_chain_order(self, obj):
+        return self.context.get('chain_order', 0)
+
+
+class SalarySummarySerializer(serializers.Serializer):
+    worker_id = serializers.IntegerField()
+    worker_name = serializers.CharField()
+    settlement_month = serializers.CharField()
+    work_order_id = serializers.IntegerField()
+    work_order_no = serializers.CharField()
+    work_order_process_id = serializers.IntegerField()
+    process_name = serializers.CharField()
+    total_passed = serializers.IntegerField()
+    unit_price = serializers.FloatField()
+    subtotal = serializers.FloatField()
+    final_amount = serializers.FloatField()
+    report_ids = serializers.ListField(child=serializers.IntegerField())
+
+
+class SalarySummaryGroupedSerializer(serializers.Serializer):
+    worker_id = serializers.IntegerField()
+    worker_name = serializers.CharField()
+    settlement_month = serializers.CharField()
+    total_passed = serializers.IntegerField()
+    total_amount = serializers.FloatField()
+    report_count = serializers.IntegerField()
+    details = SalarySummarySerializer(many=True)
+
+
+class SalarySettlementDetailSerializer(serializers.ModelSerializer):
+    worker_name = serializers.CharField(source='worker.name', read_only=True)
+    work_order_no = serializers.CharField(source='work_order.order_no', read_only=True)
+    process_name = serializers.CharField(source='work_order_process.process.name', read_only=True)
+    work_report_id = serializers.IntegerField(source='work_report.id', read_only=True)
+    unit_price_display = serializers.SerializerMethodField()
+    subtotal_display = serializers.SerializerMethodField()
+    final_amount_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SalarySettlementDetail
+        fields = [
+            'id', 'work_report_id', 'worker_name',
+            'work_order_no', 'process_name',
+            'passed_quantity', 'unit_price', 'unit_price_display',
+            'subtotal', 'subtotal_display', 'final_amount', 'final_amount_display',
+            'report_created_at'
+        ]
+
+    def get_unit_price_display(self, obj):
+        return f'{float(obj.unit_price):.4f}'
+
+    def get_subtotal_display(self, obj):
+        return f'{float(obj.subtotal):.4f}'
+
+    def get_final_amount_display(self, obj):
+        return f'{float(obj.final_amount):.2f}'
+
+
+class SalarySettlementSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.CharField(source='created_by.name', read_only=True)
+    status_name = serializers.CharField(source='get_status_display', read_only=True)
+    details = SalarySettlementDetailSerializer(many=True, read_only=True)
+    total_amount_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SalarySettlement
+        fields = [
+            'id', 'settlement_month', 'created_by', 'created_by_name',
+            'created_at', 'total_amount', 'total_amount_display',
+            'total_workers', 'total_reports', 'status', 'status_name',
+            'is_final', 'details'
+        ]
+        read_only_fields = ['created_by', 'created_at', 'total_amount', 'total_workers', 'total_reports']
+
+    def get_total_amount_display(self, obj):
+        return f'{float(obj.total_amount):.2f}'
+
+
+class SalarySettlementListSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.CharField(source='created_by.name', read_only=True)
+    status_name = serializers.CharField(source='get_status_display', read_only=True)
+    total_amount_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SalarySettlement
+        fields = [
+            'id', 'settlement_month', 'created_by_name', 'created_at',
+            'total_amount', 'total_amount_display', 'total_workers',
+            'total_reports', 'status', 'status_name', 'is_final'
+        ]
+
+    def get_total_amount_display(self, obj):
+        return f'{float(obj.total_amount):.2f}'
+
+
+class CreateSettlementSerializer(serializers.Serializer):
+    settlement_month = serializers.CharField(required=True, help_text='格式: YYYY-MM')
+
+    def validate_settlement_month(self, value):
+        import re
+        if not re.match(r'^\d{4}-\d{2}$', value):
+            raise serializers.ValidationError('月份格式不正确，应为 YYYY-MM')
+        return value

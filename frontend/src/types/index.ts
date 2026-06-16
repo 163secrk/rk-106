@@ -235,3 +235,122 @@ export interface QualityInspectionRequest {
   scrapped_quantity: number
   inspection_remark?: string
 }
+
+export interface SalarySummaryDetail {
+  worker_id: number
+  worker_name: string
+  settlement_month: string
+  work_order_id: number
+  work_order_no: string
+  work_order_process_id: number
+  process_name: string
+  total_passed: number
+  unit_price: number
+  subtotal: number
+  final_amount: number
+  report_ids: number[]
+}
+
+export interface SalarySummaryGrouped {
+  worker_id: number
+  worker_name: string
+  settlement_month: string
+  total_passed: number
+  total_amount: number
+  report_count: number
+  details: SalarySummaryDetail[]
+}
+
+export interface WorkReportTraceChainItem {
+  id: number
+  work_order_no: string
+  process_name: string
+  process_price: number
+  worker_name: string
+  quantity: number
+  passed_quantity: number
+  rework_quantity: number
+  scrapped_quantity: number
+  status: WorkReportStatus
+  status_name: string
+  inspector_name: string | null
+  inspection_time: string | null
+  inspection_remark: string
+  remark: string
+  created_at: string
+  updated_at: string
+  is_rework: boolean
+  chain_order: number
+}
+
+export interface WorkReportTraceMain {
+  id: number
+  work_order_no: string
+  process_name: string
+  process_price: number
+  worker_name: string
+  quantity: number
+  passed_quantity: number
+  rework_quantity: number
+  scrapped_quantity: number
+  status: WorkReportStatus
+  status_name: string
+  inspector_name: string | null
+  inspection_time: string | null
+  inspection_remark: string
+  remark: string
+  created_at: string
+  updated_at: string
+  rework_count: number
+  has_rework_chain: boolean
+  subtotal: number
+  final_amount: number
+}
+
+export interface WorkReportTraceData {
+  main: WorkReportTraceMain
+  chain: WorkReportTraceChainItem[]
+}
+
+export interface SalarySettlement {
+  id: number
+  settlement_month: string
+  created_by: number
+  created_by_name: string
+  created_at: string
+  total_amount: number
+  total_amount_display: string
+  total_workers: number
+  total_reports: number
+  status: string
+  status_name: string
+  is_final: boolean
+}
+
+export interface SalarySettlementDetail {
+  id: number
+  work_report_id: number
+  worker_name: string
+  work_order_no: string
+  process_name: string
+  passed_quantity: number
+  unit_price: number
+  unit_price_display: string
+  subtotal: number
+  subtotal_display: string
+  final_amount: number
+  final_amount_display: string
+  report_created_at: string
+}
+
+export interface SalarySettlementFull extends SalarySettlement {
+  details: SalarySettlementDetail[]
+}
+
+export interface SalaryFilterOptions {
+  workers: { id: number; name: string }[]
+  work_orders: { id: number; order_no: string }[]
+  processes: { id: number; name: string }[]
+  months: string[]
+  current_month: string
+}

@@ -5,8 +5,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from django.utils import timezone
-from django.db.models import Sum
-from .models import Product, Process, WorkOrder, WorkOrderProcess, WorkReport, ReworkTask
+from django.db.models import Sum, Value, CharField, IntegerField, FloatField
+from django.db.models.functions import Concat
+from decimal import Decimal, ROUND_HALF_UP
+from collections import defaultdict
+from .models import Product, Process, WorkOrder, WorkOrderProcess, WorkReport, ReworkTask, SalarySettlement, SalarySettlementDetail
 from .serializers import (
     UserSerializer,
     ProductSerializer,
@@ -17,7 +20,14 @@ from .serializers import (
     WorkerWorkOrderSerializer,
     QualityInspectionSerializer,
     ReworkTaskSerializer,
-    InspectorWorkReportSerializer
+    InspectorWorkReportSerializer,
+    WorkReportTraceSerializer,
+    WorkReportTraceChainSerializer,
+    SalarySummarySerializer,
+    SalarySummaryGroupedSerializer,
+    SalarySettlementSerializer,
+    SalarySettlementListSerializer,
+    CreateSettlementSerializer
 )
 
 
@@ -647,4 +657,318 @@ class WorkerReworkTaskDetailView(APIView):
             'code': 200,
             'message': '成功',
             'data': serializer.data
+        })
+
+
+class SalarySummaryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role not in ['admin', 'team_leader']:
+            return Response({
+                'code': 403,
+                'message': '无权限访问'
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        month = request.query_params.get('month', None)
+        worker_id = request.query_params.get('worker_id', None)
+        work_order_id = request.query_params.get('work_order_id', None)
+        process_id = request.query_params.get('process_id', None)
+
+        queryset = WorkReport.objects.filter(
+            status='passed'
+        ).select_related(
+            'worker', 'work_order', 'work_order_process', 'work_order_process__process'
+        )
+
+        if month:
+            year, month_num = map(int, month.split('-'))
+            queryset = queryset.filter(
+                created_at__year=year,
+                created_at__month=month_num
+            )
+
+        if worker_id:
+            queryset = queryset.filter(worker_id=worker_id)
+
+        if work_order_id:
+            queryset = queryset.filter(work_order_id=work_order_id)
+
+        if process_id:
+            queryset = queryset.filter(work_order_process__process_id=process_id)
+
+        grouped = defaultdict(lambda: defaultdict(lambda: {
+            'worker_id': None,
+            'worker_name': '',
+            'settlement_month': month or '',
+            'work_order_id': None,
+            'work_order_no': '',
+            'work_order_process_id': None,
+            'process_name': '',
+            'total_passed': 0,
+            'unit_price': 0.0,
+            'subtotal': 0.0,
+            'final_amount': 0.0,
+            'report_ids': []
+        }))
+
+        for report in queryset:
+            w_id = report.worker_id
+            wo_id = report.work_order_id
+            wop_id = report.work_order_process_id
+            key = (w_id, wo_id, wop_id)
+            entry = grouped[w_id][key]
+
+            process_price = Decimal(str(report.work_order_process.process.price))
+            passed_qty = Decimal(str(report.passed_quantity))
+            report_subtotal = (passed_qty * process_price).quantize(Decimal('0.0000'))
+            report_final = report_subtotal.quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
+
+            if entry['worker_id'] is None:
+                entry['worker_id'] = report.worker.id
+                entry['worker_name'] = report.worker.name
+                entry['work_order_id'] = report.work_order.id
+                entry['work_order_no'] = report.work_order.order_no
+                entry['work_order_process_id'] = report.work_order_process.id
+                entry['process_name'] = report.work_order_process.process.name
+                entry['unit_price'] = float(process_price)
+
+            entry['total_passed'] += report.passed_quantity
+            entry['subtotal'] = float((Decimal(str(entry['subtotal'])) + report_subtotal).quantize(Decimal('0.0000')))
+            entry['report_ids'].append(report.id)
+
+        result = []
+        for w_id, worker_groups in grouped.items():
+            worker_total_passed = 0
+            worker_total_amount = 0.0
+            details = []
+            worker_report_count = 0
+
+            for key, detail in worker_groups.values():
+                detail['final_amount'] = float(Decimal(str(detail['subtotal'])).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP))
+                details.append(detail)
+                worker_total_passed += detail['total_passed']
+                worker_total_amount = float((Decimal(str(worker_total_amount)) + Decimal(str(detail['final_amount']))).quantize(Decimal('0.00')))
+                worker_report_count += len(detail['report_ids'])
+
+            worker_entry = {
+                'worker_id': list(worker_groups.values())[0]['worker_id'],
+                'worker_name': list(worker_groups.values())[0]['worker_name'],
+                'settlement_month': month or '',
+                'total_passed': worker_total_passed,
+                'total_amount': worker_total_amount,
+                'report_count': worker_report_count,
+                'details': details
+            }
+            result.append(worker_entry)
+
+        return Response({
+            'code': 200,
+            'message': '成功',
+            'data': result
+        })
+
+
+class WorkReportTraceView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        if request.user.role not in ['admin', 'team_leader']:
+            return Response({
+                'code': 403,
+                'message': '无权限访问'
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            report = WorkReport.objects.get(pk=pk)
+        except WorkReport.DoesNotExist:
+            return Response({
+                'code': 404,
+                'message': '报工记录不存在'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        chain = []
+        current = report
+        while current.parent_report is not None:
+            current = current.parent_report
+            chain.insert(0, current)
+        chain.append(report)
+
+        chain_data = []
+        for idx, r in enumerate(chain):
+            serializer = WorkReportTraceChainSerializer(r, context={'chain_order': idx})
+            chain_data.append(serializer.data)
+
+        main_serializer = WorkReportTraceSerializer(report)
+        return Response({
+            'code': 200,
+            'message': '成功',
+            'data': {
+                'main': main_serializer.data,
+                'chain': chain_data
+            }
+        })
+
+
+class SalarySettlementListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role not in ['admin', 'team_leader']:
+            return Response({
+                'code': 403,
+                'message': '无权限访问'
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        month = request.query_params.get('month', None)
+        queryset = SalarySettlement.objects.all().select_related('created_by')
+
+        if month:
+            queryset = queryset.filter(settlement_month=month)
+
+        queryset = queryset.order_by('-created_at')
+        serializer = SalarySettlementListSerializer(queryset, many=True)
+        return Response({
+            'code': 200,
+            'message': '成功',
+            'data': serializer.data
+        })
+
+
+class SalarySettlementDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        if request.user.role not in ['admin', 'team_leader']:
+            return Response({
+                'code': 403,
+                'message': '无权限访问'
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            settlement = SalarySettlement.objects.select_related('created_by').get(pk=pk)
+        except SalarySettlement.DoesNotExist:
+            return Response({
+                'code': 404,
+                'message': '结算单不存在'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = SalarySettlementSerializer(settlement)
+        return Response({
+            'code': 200,
+            'message': '成功',
+            'data': serializer.data
+        })
+
+
+class CreateSettlementView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role not in ['admin', 'team_leader']:
+            return Response({
+                'code': 403,
+                'message': '无权限操作'
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = CreateSettlementSerializer(data=request.data)
+        if not serializer.is_valid():
+            error_message = list(serializer.errors.values())[0][0] if serializer.errors else '数据验证失败'
+            return Response({
+                'code': 400,
+                'message': error_message,
+                'errors': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        settlement_month = serializer.validated_data['settlement_month']
+        year, month_num = map(int, settlement_month.split('-'))
+
+        existing = SalarySettlement.objects.filter(
+            settlement_month=settlement_month,
+            is_final=True
+        ).first()
+        if existing:
+            return Response({
+                'code': 400,
+                'message': f'{settlement_month}月已存在结算单，不能重复生成'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        reports = WorkReport.objects.filter(
+            created_at__year=year,
+            created_at__month=month_num,
+            status='passed'
+        ).select_related(
+            'worker', 'work_order', 'work_order_process', 'work_order_process__process'
+        )
+
+        if not reports.exists():
+            return Response({
+                'code': 400,
+                'message': f'{settlement_month}月没有已通过质检的报工记录'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        settlement = SalarySettlement.objects.create(
+            settlement_month=settlement_month,
+            created_by=request.user,
+            status='settled',
+            is_final=True
+        )
+
+        details_to_create = []
+        for report in reports:
+            detail = SalarySettlementDetail(
+                settlement=settlement,
+                work_report=report,
+                worker=report.worker,
+                work_order=report.work_order,
+                work_order_process=report.work_order_process,
+                passed_quantity=report.passed_quantity,
+                report_created_at=report.created_at
+            )
+            detail.calculate()
+            details_to_create.append(detail)
+
+        SalarySettlementDetail.objects.bulk_create(details_to_create)
+        settlement.update_statistics()
+        settlement.lock_work_reports()
+
+        result_serializer = SalarySettlementSerializer(settlement)
+        return Response({
+            'code': 200,
+            'message': '结算单生成成功，相关报工数据已锁定',
+            'data': result_serializer.data
+        })
+
+
+class SalaryFilterOptionsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role not in ['admin', 'team_leader']:
+            return Response({
+                'code': 403,
+                'message': '无权限访问'
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        workers = User.objects.filter(role='worker').values('id', 'name').order_by('name')
+        work_orders = WorkOrder.objects.filter(has_report=True).values('id', 'order_no').order_by('-created_at')
+        processes = Process.objects.all().values('id', 'name').order_by('id')
+
+        months = WorkReport.objects.filter(status='passed').dates('created_at', 'month', order='DESC')
+        month_list = [m.strftime('%Y-%m') for m in months]
+
+        current_month = timezone.now().strftime('%Y-%m')
+        if current_month not in month_list:
+            month_list.insert(0, current_month)
+
+        return Response({
+            'code': 200,
+            'message': '成功',
+            'data': {
+                'workers': list(workers),
+                'work_orders': list(work_orders),
+                'processes': list(processes),
+                'months': month_list,
+                'current_month': current_month
+            }
         })

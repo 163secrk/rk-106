@@ -13,7 +13,13 @@ from .views import (
     InspectorHistoryListView,
     QualityInspectionView,
     WorkerReworkTaskListView,
-    WorkerReworkTaskDetailView
+    WorkerReworkTaskDetailView,
+    SalarySummaryView,
+    WorkReportTraceView,
+    SalarySettlementListView,
+    SalarySettlementDetailView,
+    CreateSettlementView,
+    SalaryFilterOptionsView
 )
 
 router = DefaultRouter()
@@ -32,5 +38,11 @@ urlpatterns = [
     path('workreports/<int:pk>/inspect/', QualityInspectionView.as_view(), name='workreport-inspect'),
     path('worker/rework-tasks/', WorkerReworkTaskListView.as_view(), name='worker-rework-task-list'),
     path('worker/rework-tasks/<int:pk>/', WorkerReworkTaskDetailView.as_view(), name='worker-rework-task-detail'),
+    path('salary/summary/', SalarySummaryView.as_view(), name='salary-summary'),
+    path('salary/filter-options/', SalaryFilterOptionsView.as_view(), name='salary-filter-options'),
+    path('salary/settlements/', SalarySettlementListView.as_view(), name='salary-settlement-list'),
+    path('salary/settlements/create/', CreateSettlementView.as_view(), name='salary-create-settlement'),
+    path('salary/settlements/<int:pk>/', SalarySettlementDetailView.as_view(), name='salary-settlement-detail'),
+    path('workreports/<int:pk>/trace/', WorkReportTraceView.as_view(), name='workreport-trace'),
     path('', include(router.urls)),
 ]

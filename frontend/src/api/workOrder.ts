@@ -13,7 +13,12 @@ import type {
   PendingWorkOrderGroup,
   InspectorWorkReport,
   ReworkTask,
-  QualityInspectionRequest
+  QualityInspectionRequest,
+  SalarySummaryGrouped,
+  WorkReportTraceData,
+  SalarySettlement,
+  SalarySettlementFull,
+  SalaryFilterOptions
 } from '@/types'
 
 export function getProducts(): Promise<Product[]> {
@@ -91,4 +96,40 @@ export function getWorkerReworkTasks(status?: string): Promise<ReworkTask[]> {
 
 export function getWorkerReworkTaskDetail(id: number): Promise<ReworkTask> {
   return get<ReworkTask>(`/worker/rework-tasks/${id}/`)
+}
+
+export function getSalaryFilterOptions(): Promise<SalaryFilterOptions> {
+  return get<SalaryFilterOptions>('/salary/filter-options/')
+}
+
+export function getSalarySummary(params?: {
+  month?: string
+  worker_id?: number
+  work_order_id?: number
+  process_id?: number
+}): Promise<SalarySummaryGrouped[]> {
+  const query = new URLSearchParams()
+  if (params?.month) query.append('month', params.month)
+  if (params?.worker_id) query.append('worker_id', String(params.worker_id))
+  if (params?.work_order_id) query.append('work_order_id', String(params.work_order_id))
+  if (params?.process_id) query.append('process_id', String(params.process_id))
+  const url = query.toString() ? `/salary/summary/?${query.toString()}` : '/salary/summary/'
+  return get<SalarySummaryGrouped[]>(url)
+}
+
+export function getWorkReportTrace(id: number): Promise<WorkReportTraceData> {
+  return get<WorkReportTraceData>(`/workreports/${id}/trace/`)
+}
+
+export function getSalarySettlements(month?: string): Promise<SalarySettlement[]> {
+  const url = month ? `/salary/settlements/?month=${month}` : '/salary/settlements/'
+  return get<SalarySettlement[]>(url)
+}
+
+export function getSalarySettlementDetail(id: number): Promise<SalarySettlementFull> {
+  return get<SalarySettlementFull>(`/salary/settlements/${id}/`)
+}
+
+export function createSalarySettlement(settlement_month: string): Promise<SalarySettlementFull> {
+  return post<SalarySettlementFull>('/salary/settlements/create/', { settlement_month })
 }

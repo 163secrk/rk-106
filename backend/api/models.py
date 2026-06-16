@@ -186,3 +186,82 @@ class ReworkTask(models.Model):
 
     def __str__(self):
         return f'返修-{self.work_report.id}-{self.worker.name}-{self.quantity}件'
+
+
+class SalarySettlement(models.Model):
+    STATUS_CHOICES = (
+        ('draft', '草稿'),
+        ('settled', '已结算'),
+    )
+
+    settlement_month = models.CharField(max_length=7, verbose_name='结算月份(YYYY-MM)')
+    created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='created_settlements', verbose_name='创建人')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='总金额')
+    total_workers = models.IntegerField(default=0, verbose_name='工人总数')
+    total_reports = models.IntegerField(default=0, verbose_name='报工记录总数')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='settled', verbose_name='状态')
+    is_final = models.BooleanField(default=True, verbose_name='是否最终结算(锁定数据)')
+
+    class Meta:
+        verbose_name = '工资结算单'
+        verbose_name_plural = verbose_name
+        ordering = ['-created_at']
+        unique_together = ('settlement_month', 'is_final')
+
+    def __str__(self):
+        return f'{self.settlement_month}工资结算单'
+
+    def get_total_workers(self):
+        return self.details.values('worker').distinct().count()
+
+    def get_total_reports(self):
+        return self.details.count()
+
+    def get_total_amount(self):
+        from django.db.models import Sum
+        result = self.details.aggregate(total=Sum('final_amount'))['total']
+        return result or 0
+
+    def update_statistics(self):
+        self.total_workers = self.get_total_workers()
+        self.total_reports = self.get_total_reports()
+        self.total_amount = self.get_total_amount()
+        self.save()
+
+    def lock_work_reports(self):
+        from datetime import datetime
+        year, month = map(int, self.settlement_month.split('-'))
+        WorkReport.objects.filter(
+            created_at__year=year,
+            created_at__month=month
+        ).update(is_locked=True)
+
+
+class SalarySettlementDetail(models.Model):
+    settlement = models.ForeignKey(SalarySettlement, on_delete=models.CASCADE, related_name='details', verbose_name='结算单')
+    work_report = models.ForeignKey(WorkReport, on_delete=models.PROTECT, related_name='settlement_details', verbose_name='报工记录')
+    worker = models.ForeignKey(User, on_delete=models.PROTECT, related_name='salary_details', verbose_name='工人')
+    work_order = models.ForeignKey(WorkOrder, on_delete=models.PROTECT, related_name='salary_details', verbose_name='工单')
+    work_order_process = models.ForeignKey(WorkOrderProcess, on_delete=models.PROTECT, related_name='salary_details', verbose_name='工单工序')
+    passed_quantity = models.IntegerField(default=0, verbose_name='合格件数')
+    unit_price = models.DecimalField(max_digits=10, decimal_places=4, default=0, verbose_name='单价(4位小数)')
+    subtotal = models.DecimalField(max_digits=12, decimal_places=4, default=0, verbose_name='小计(4位小数)')
+    final_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='最终金额(2位小数)')
+    report_created_at = models.DateTimeField(verbose_name='报工时间')
+
+    class Meta:
+        verbose_name = '工资结算明细'
+        verbose_name_plural = verbose_name
+        ordering = ['worker__name', '-report_created_at']
+
+    def __str__(self):
+        return f'{self.worker.name}-{self.work_order.order_no}-{self.passed_quantity}件-¥{self.final_amount}'
+
+    def calculate(self):
+        from decimal import Decimal, ROUND_HALF_UP
+        price = Decimal(str(self.work_order_process.process.price))
+        quantity = Decimal(str(self.passed_quantity))
+        self.unit_price = price
+        self.subtotal = (quantity * price).quantize(Decimal('0.0000'))
+        self.final_amount = self.subtotal.quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
