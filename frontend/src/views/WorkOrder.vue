@@ -10,8 +10,6 @@ import {
   NModal,
   NForm,
   NFormItem,
-  NFormItemGi,
-  NInput,
   NInputNumber,
   NDatePicker,
   NSelect,
@@ -22,16 +20,14 @@ import {
   NDescriptions,
   NDescriptionsItem,
   NEmpty,
-  useMessage,
-  FormInst,
-  FormRules
+  useMessage
 } from 'naive-ui'
+import type { FormInst, FormRules } from 'naive-ui'
 import {
   AddOutline,
   CreateOutline,
   TrashOutline,
   EyeOutline,
-  CloseOutline,
   TimeOutline,
   PeopleOutline,
   DocumentTextOutline
@@ -89,13 +85,57 @@ const editForm = reactive({
 })
 
 const createRules: FormRules = {
-  product: { required: true, message: '请选择产品', trigger: 'change' },
-  quantity: { required: true, message: '请输入生产数量', trigger: 'change' },
-  deadline: { required: true, message: '请选择交付日期', trigger: 'change' }
+  product: {
+    required: true,
+    type: 'number',
+    message: '请选择产品',
+    trigger: 'change',
+    validator: (_rule, value) => {
+      if (value === null || value === undefined) {
+        return new Error('请选择产品')
+      }
+      return true
+    }
+  },
+  quantity: {
+    required: true,
+    type: 'number',
+    message: '请输入生产数量',
+    trigger: 'change',
+    validator: (_rule, value) => {
+      if (value === null || value === undefined || value <= 0) {
+        return new Error('请输入有效的生产数量')
+      }
+      return true
+    }
+  },
+  deadline: {
+    required: true,
+    type: 'number',
+    message: '请选择交付日期',
+    trigger: 'change',
+    validator: (_rule, value) => {
+      if (value === null || value === undefined || value <= 0) {
+        return new Error('请选择交付日期')
+      }
+      return true
+    }
+  }
 }
 
 const editRules: FormRules = {
-  deadline: { required: true, message: '请选择交付日期', trigger: 'change' }
+  deadline: {
+    required: true,
+    type: 'number',
+    message: '请选择交付日期',
+    trigger: 'change',
+    validator: (_rule, value) => {
+      if (value === null || value === undefined || value <= 0) {
+        return new Error('请选择交付日期')
+      }
+      return true
+    }
+  }
 }
 
 const statusConfig = {
@@ -156,10 +196,12 @@ const removeProcessRow = (target: 'create' | 'edit', index: number) => {
 const handleCreate = async () => {
   try {
     await createFormRef.value?.validate()
-    if (!createForm.product || !createForm.quantity || !createForm.deadline) {
-      message.warning('请填写完整信息')
-      return
-    }
+  } catch (e) {
+    message.warning('请完善表单信息')
+    return
+  }
+
+  try {
     if (createForm.processes.length === 0) {
       message.warning('请至少添加工序')
       return
@@ -170,10 +212,10 @@ const handleCreate = async () => {
       return
     }
 
-    const deadlineDate = new Date(createForm.deadline)
+    const deadlineDate = new Date(createForm.deadline as number)
     const data: CreateWorkOrderRequest = {
-      product: createForm.product,
-      quantity: createForm.quantity,
+      product: createForm.product as number,
+      quantity: createForm.quantity as number,
       deadline: deadlineDate.toISOString().split('T')[0],
       processes: createForm.processes
     }
@@ -200,12 +242,13 @@ const openEdit = async (id: number) => {
   try {
     const detail = await getWorkOrderDetail(id)
     currentEditId.value = id
+    currentDetail.value = detail
     editForm.product = detail.product
     editForm.quantity = detail.quantity
     editForm.deadline = new Date(detail.deadline).getTime()
     editForm.processes = detail.processes.map(p => ({
       id: p.id,
-      process_id: p.process,
+      process_id: p.process_id,
       worker_ids: p.workers_info ? p.workers_info.map(w => w.id) : []
     }))
     showEditModal.value = true
@@ -218,10 +261,12 @@ const handleEdit = async () => {
   if (currentEditId.value === null) return
   try {
     await editFormRef.value?.validate()
-    if (!editForm.quantity || !editForm.deadline) {
-      message.warning('请填写完整信息')
-      return
-    }
+  } catch (e) {
+    message.warning('请完善表单信息')
+    return
+  }
+
+  try {
     if (editForm.processes.length === 0) {
       message.warning('请至少添加工序')
       return
@@ -232,9 +277,9 @@ const handleEdit = async () => {
       return
     }
 
-    const deadlineDate = new Date(editForm.deadline)
+    const deadlineDate = new Date(editForm.deadline as number)
     const data = {
-      quantity: editForm.quantity,
+      quantity: editForm.quantity as number,
       deadline: deadlineDate.toISOString().split('T')[0],
       processes: editForm.processes
     }
@@ -335,17 +380,6 @@ const tableColumns = [
     }
   }
 ]
-
-const getWorkerNames = (workerIds: number[]) => {
-  return workerIds
-    .map(id => workers.value.find(w => w.id === id)?.name)
-    .filter(Boolean)
-    .join('、')
-}
-
-const getProcessName = (processId: number) => {
-  return processes.value.find(p => p.id === processId)?.name || '-'
-}
 
 const detailTableColumns = [
   { title: '工序', key: 'process_name' },
@@ -529,7 +563,7 @@ onMounted(() => {
                   multiple
                   placeholder="选择工人"
                   :options="workers.map(w => ({ label: w.name, value: w.id }))"
-                  max-tag-count="3"
+                  :max-tag-count="3"
                 />
               </n-grid-item>
               <n-grid-item :span="1" class="process-actions">
@@ -591,7 +625,7 @@ onMounted(() => {
                 placeholder="请输入生产数量"
                 :min="1"
                 style="width: 100%"
-                :disabled="currentDetail && !currentDetail.can_edit_product"
+                :disabled="!!(currentDetail && !currentDetail.can_edit_product)"
               />
               <p v-if="currentDetail && !currentDetail.can_edit_product" class="hint-text">
                 工单已有报工记录，无法修改数量
@@ -632,7 +666,7 @@ onMounted(() => {
                   v-model:value="proc.process_id"
                   placeholder="选择工序"
                   :options="processes.map(p => ({ label: p.name, value: p.id }))"
-                  :disabled="currentDetail && !currentDetail.can_edit_product"
+                  :disabled="!!(currentDetail && !currentDetail.can_edit_product)"
                 />
               </n-grid-item>
               <n-grid-item :span="1">
@@ -641,7 +675,7 @@ onMounted(() => {
                   multiple
                   placeholder="选择工人"
                   :options="workers.map(w => ({ label: w.name, value: w.id }))"
-                  max-tag-count="3"
+                  :max-tag-count="3"
                 />
               </n-grid-item>
               <n-grid-item :span="1" class="process-actions">
