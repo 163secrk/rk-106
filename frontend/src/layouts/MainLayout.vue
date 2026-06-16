@@ -139,7 +139,7 @@ function toggleCollapse(): void {
 </script>
 
 <template>
-  <n-layout class="main-layout" mode="horizontal" :class="{ 'worker-mode': isWorker }">
+  <n-layout has-sider position="absolute" class="main-layout" :class="{ 'worker-mode': isWorker }">
     <n-layout-sider
       :collapsed="collapsed"
       collapse-mode="width"
@@ -236,9 +236,7 @@ function toggleCollapse(): void {
 </template>
 
 <style scoped>
-.main-layout {
-  height: 100vh;
-}
+
 
 .layout-sider {
   background: #1e293b;
@@ -353,6 +351,8 @@ function toggleCollapse(): void {
 
 .main-content-layout {
   background: #f1f5f9;
+  display: flex;
+  flex-direction: column;
 }
 
 .layout-header {
@@ -407,6 +407,7 @@ function toggleCollapse(): void {
 
 .layout-content {
   padding: 24px;
+  flex: 1;
 }
 
 .worker-mode .sider-menu :deep(.n-menu-item) {
