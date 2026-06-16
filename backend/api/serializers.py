@@ -45,8 +45,8 @@ class WorkOrderProcessSerializer(serializers.ModelSerializer):
     class Meta:
         model = WorkOrderProcess
         fields = [
-            'id', 'process', 'process_id', 'process_name', 'process_price',
-            'workers', 'worker_ids', 'workers_info',
+            'id', 'process_id', 'process_name', 'process_price',
+            'worker_ids', 'workers_info',
             'reported_quantity', 'passed_quantity', 'created_at'
         ]
 
@@ -82,6 +82,20 @@ class WorkOrderSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     '工单已有报工记录，不能修改产品和数量'
                 )
+
+        processes_data = attrs.get('processes', [])
+        if processes_data:
+            process_ids = []
+            for p_data in processes_data:
+                process = p_data.get('process')
+                if process:
+                    pid = process.id if hasattr(process, 'id') else process
+                    if pid in process_ids:
+                        raise serializers.ValidationError(
+                            {'processes': '不能重复添加相同的工序'}
+                        )
+                    process_ids.append(pid)
+
         return attrs
 
     def create(self, validated_data):

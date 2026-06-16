@@ -366,8 +366,7 @@ onMounted(() => {
             :columns="workOrderColumns"
             :data="workerWorkOrders"
             :loading="loading"
-            :expanded-row-keys="expandedRowKeys"
-            :on-update:expanded-row-keys="(value) => expandedRowKeys = value"
+            v-model:expanded-row-keys="expandedRowKeys"
             :row-key="(row) => row.id"
             striped
           >

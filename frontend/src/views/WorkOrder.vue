@@ -455,6 +455,7 @@ onMounted(() => {
         :data="pendingOrders"
         :loading="loading"
         :bordered="false"
+        :row-key="(row) => row.id"
         size="medium"
       />
     </n-card>
@@ -465,6 +466,7 @@ onMounted(() => {
         :data="inProgressOrders"
         :loading="loading"
         :bordered="false"
+        :row-key="(row) => row.id"
         size="medium"
       />
     </n-card>
@@ -475,6 +477,7 @@ onMounted(() => {
         :data="completedOrders"
         :loading="loading"
         :bordered="false"
+        :row-key="(row) => row.id"
         size="medium"
       />
     </n-card>
@@ -743,6 +746,7 @@ onMounted(() => {
           :bordered="false"
           :data="currentDetail.processes"
           :columns="detailTableColumns"
+          :row-key="(row) => row.id"
           size="small"
         />
       </div>
