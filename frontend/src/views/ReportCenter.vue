@@ -109,6 +109,9 @@ const isOverLimit = computed(() => {
 
 const workOrderColumns = [
   {
+    type: 'expand' as const
+  },
+  {
     title: '工单号',
     key: 'order_no',
     width: 160
@@ -362,7 +365,6 @@ onMounted(() => {
           </div>
 
           <n-table
-            v-if="workerWorkOrders.length > 0"
             :columns="workOrderColumns"
             :data="workerWorkOrders"
             :loading="loading"
@@ -397,14 +399,6 @@ onMounted(() => {
               </div>
             </template>
           </n-table>
-
-          <n-empty v-else-if="!loading" description="暂无指派给您的工单">
-            <template #icon>
-              <n-icon size="48" color="#cbd5e1">
-                <clipboard-outline />
-              </n-icon>
-            </template>
-          </n-empty>
         </n-card>
       </n-tab-pane>
 
@@ -428,21 +422,12 @@ onMounted(() => {
           </div>
 
           <n-table
-            v-if="workReports.length > 0"
             :columns="reportColumns"
             :data="workReports"
             :loading="loading"
             :row-key="(row) => row.id"
             striped
           />
-
-          <n-empty v-else-if="!loading" description="暂无报工记录">
-            <template #icon>
-              <n-icon size="48" color="#cbd5e1">
-                <clipboard-outline />
-              </n-icon>
-            </template>
-          </n-empty>
         </n-card>
       </n-tab-pane>
     </n-tabs>

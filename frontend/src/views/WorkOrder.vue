@@ -449,7 +449,7 @@ onMounted(() => {
       </n-card>
     </div>
 
-    <n-card class="content-card" title="待生产" v-if="pendingOrders.length > 0">
+    <n-card class="content-card" title="待生产">
       <n-table
         :columns="tableColumns"
         :data="pendingOrders"
@@ -460,7 +460,7 @@ onMounted(() => {
       />
     </n-card>
 
-    <n-card class="content-card" title="生产中" v-if="inProgressOrders.length > 0">
+    <n-card class="content-card" title="生产中">
       <n-table
         :columns="tableColumns"
         :data="inProgressOrders"
@@ -471,7 +471,7 @@ onMounted(() => {
       />
     </n-card>
 
-    <n-card class="content-card" title="已完成" v-if="completedOrders.length > 0">
+    <n-card class="content-card" title="已完成">
       <n-table
         :columns="tableColumns"
         :data="completedOrders"

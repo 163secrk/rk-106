@@ -68,6 +68,7 @@ class WorkOrderSerializer(serializers.ModelSerializer):
             'created_by', 'created_by_name', 'created_at', 'updated_at',
             'has_report', 'processes', 'progress', 'can_edit_product'
         ]
+        read_only_fields = ['order_no', 'status', 'created_by', 'created_at', 'updated_at', 'has_report']
 
     def get_progress(self, obj):
         return obj.get_progress()
