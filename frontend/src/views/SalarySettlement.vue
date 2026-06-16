@@ -339,7 +339,7 @@ const settlementColumns: DataTableColumns<SalarySettlement> = [
     key: 'total_amount',
     width: 140,
     align: 'right',
-    render: (row) => h('span', { style: 'color: #dc2626; font-weight: 700; font-family: monospace; font-size: 15px;' }, `¥${row.total_amount.toFixed(2)}`)
+    render: (row) => h('span', { style: 'color: #dc2626; font-weight: 700; font-family: monospace; font-size: 15px;' }, `¥${Number(row.total_amount).toFixed(2)}`)
   },
   {
     title: '状态',
@@ -677,9 +677,10 @@ onMounted(() => {
               <n-icon size="20" color="#10b981"><checkmark-circle-outline /></n-icon>
             </template>
           </n-statistic>
-          <n-statistic label="工资总额" :value="totalSalary" prefix="¥" :precision="2">
+          <n-statistic label="工资总额" :value="totalSalary" :precision="2">
             <template #prefix>
-              <n-icon size="20" color="#f59e0b"><cash-outline /></n-icon>
+              <n-icon size="20" color="#f59e0b" style="margin-right: 4px;"><cash-outline /></n-icon>
+              ¥
             </template>
           </n-statistic>
         </div>
@@ -803,7 +804,7 @@ onMounted(() => {
                   </div>
                   <div class="timeline-item-row">
                     <span class="timeline-label">
-                      <n-icon :size="14" style="margin-right: 3px; vertical-align: middle; color: #10b981;"><check-circle-outline /></n-icon>
+                      <n-icon :size="14" style="margin-right: 3px; vertical-align: middle; color: #10b981;"><checkmark-circle-outline /></n-icon>
                       合格件数：
                     </span>
                     <n-tag type="success" size="small">{{ item.passed_quantity }} 件</n-tag>
@@ -873,7 +874,7 @@ onMounted(() => {
             <n-statistic label="报工笔数" :value="settlementDetail.total_reports" suffix="笔" />
             <div class="settlement-amount-stat">
               <div class="stat-label">结算总金额</div>
-              <div class="stat-value amount-value">¥{{ settlementDetail.total_amount.toFixed(2) }}</div>
+              <div class="stat-value amount-value">¥{{ Number(settlementDetail.total_amount).toFixed(2) }}</div>
             </div>
           </div>
 

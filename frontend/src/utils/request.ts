@@ -35,8 +35,14 @@ service.interceptors.response.use(
     }
     return Promise.reject(new Error(res.message || '请求失败'))
   },
-  (error: unknown) => {
-    return Promise.reject(error)
+  (error: any) => {
+    if (error.response && error.response.data && error.response.data.message) {
+      return Promise.reject(new Error(error.response.data.message))
+    }
+    if (error.message) {
+      return Promise.reject(new Error(error.message))
+    }
+    return Promise.reject(new Error('网络请求失败，请检查网络连接'))
   }
 )
 
