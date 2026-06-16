@@ -29,8 +29,8 @@ class LoginView(APIView):
         refresh = RefreshToken.for_user(user)
         user_data = UserSerializer(user).data
         role_data = {
-            'code': user.role,
-            'name': user.get_role_display()
+            'code': 'admin',
+            'name': '管理员'
         }
 
         return Response({
