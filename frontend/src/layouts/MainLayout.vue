@@ -139,7 +139,7 @@ function toggleCollapse(): void {
 </script>
 
 <template>
-  <n-layout class="main-layout" :class="{ 'worker-mode': isWorker }">
+  <n-layout class="main-layout" mode="horizontal" :class="{ 'worker-mode': isWorker }">
     <n-layout-sider
       :collapsed="collapsed"
       collapse-mode="width"
