@@ -133,12 +133,18 @@ class WorkReport(models.Model):
         ('pending', '待质检'),
         ('passed', '已通过'),
         ('rejected', '已驳回'),
+        ('rework', '待返工'),
     )
 
     work_order = models.ForeignKey(WorkOrder, on_delete=models.PROTECT, related_name='reports', verbose_name='工单')
     work_order_process = models.ForeignKey(WorkOrderProcess, on_delete=models.PROTECT, related_name='reports', verbose_name='工单工序')
     worker = models.ForeignKey(User, on_delete=models.PROTECT, related_name='work_reports', verbose_name='报工工人')
     quantity = models.IntegerField(verbose_name='报工数量')
+    passed_quantity = models.IntegerField(default=0, verbose_name='合格件数')
+    rework_quantity = models.IntegerField(default=0, verbose_name='返工件数')
+    scrapped_quantity = models.IntegerField(default=0, verbose_name='报废件数')
+    is_locked = models.BooleanField(default=False, verbose_name='是否锁定')
+    parent_report = models.ForeignKey('self', on_delete=models.PROTECT, related_name='rework_reports', null=True, blank=True, verbose_name='原报工记录')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', verbose_name='状态')
     inspector = models.ForeignKey(User, on_delete=models.PROTECT, related_name='inspected_reports', null=True, blank=True, verbose_name='质检人')
     inspection_time = models.DateTimeField(null=True, blank=True, verbose_name='质检时间')
@@ -154,3 +160,29 @@ class WorkReport(models.Model):
 
     def __str__(self):
         return f'{self.work_order.order_no} - {self.work_order_process.process.name} - {self.worker.name}'
+
+
+class ReworkTask(models.Model):
+    STATUS_CHOICES = (
+        ('pending', '待返工'),
+        ('submitted', '已提交重检'),
+        ('completed', '已完成'),
+    )
+
+    work_report = models.ForeignKey(WorkReport, on_delete=models.PROTECT, related_name='rework_tasks', verbose_name='原报工记录')
+    worker = models.ForeignKey(User, on_delete=models.PROTECT, related_name='rework_tasks', verbose_name='返工工人')
+    work_order = models.ForeignKey(WorkOrder, on_delete=models.PROTECT, related_name='rework_tasks', verbose_name='工单')
+    work_order_process = models.ForeignKey(WorkOrderProcess, on_delete=models.PROTECT, related_name='rework_tasks', verbose_name='工单工序')
+    quantity = models.IntegerField(verbose_name='返工数量')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', verbose_name='状态')
+    resubmitted_report = models.ForeignKey(WorkReport, on_delete=models.PROTECT, related_name='source_rework_tasks', null=True, blank=True, verbose_name='重新提交的报工记录')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+
+    class Meta:
+        verbose_name = '返修任务'
+        verbose_name_plural = verbose_name
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'返修-{self.work_report.id}-{self.worker.name}-{self.quantity}件'

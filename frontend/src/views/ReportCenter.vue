@@ -19,7 +19,8 @@ import {
   NDescriptions,
   NDescriptionsItem,
   NAlert,
-  useMessage
+  useMessage,
+  NBadge
 } from 'naive-ui'
 import type { FormInst, FormRules } from 'naive-ui'
 import {
@@ -30,18 +31,21 @@ import {
   SendOutline,
   EyeOutline,
   DocumentTextOutline,
-  RefreshOutline
+  RefreshOutline,
+  ArrowRedoOutline
 } from '@vicons/ionicons5'
 import {
   getWorkerWorkOrders,
   getWorkReports,
-  createWorkReport
+  createWorkReport,
+  getWorkerReworkTasks
 } from '@/api/workOrder'
 import type {
   WorkerWorkOrder,
   WorkerWorkOrderProcess,
   WorkReport,
-  CreateWorkReportRequest
+  CreateWorkReportRequest,
+  ReworkTask
 } from '@/types'
 
 const message = useMessage()
@@ -49,18 +53,30 @@ const message = useMessage()
 const loading = ref(false)
 const workerWorkOrders = ref<WorkerWorkOrder[]>([])
 const workReports = ref<WorkReport[]>([])
+const reworkTasks = ref<ReworkTask[]>([])
 
 const showReportModal = ref(false)
+const showReworkModal = ref(false)
 const selectedWorkOrder = ref<WorkerWorkOrder | null>(null)
 const selectedProcess = ref<WorkerWorkOrderProcess | null>(null)
+const selectedReworkTask = ref<ReworkTask | null>(null)
 
 const reportFormRef = ref<FormInst | null>(null)
+const reworkFormRef = ref<FormInst | null>(null)
 
 const reportForm = reactive({
   work_order_id: null as number | null,
   work_order_process_id: null as number | null,
   quantity: null as number | null,
   remark: ''
+})
+
+const reworkForm = reactive({
+  work_order_id: null as number | null,
+  work_order_process_id: null as number | null,
+  quantity: null as number | null,
+  remark: '',
+  rework_task_id: null as number | null
 })
 
 const reportFormRules: FormRules = {
@@ -173,6 +189,89 @@ const workOrderColumns = [
   }
 ]
 
+const reworkTaskColumns = [
+  {
+    title: '工单号',
+    key: 'work_order_no',
+    width: 160
+  },
+  {
+    title: '工序',
+    key: 'process_name',
+    width: 120
+  },
+  {
+    title: '原报工数量',
+    key: 'original_quantity',
+    width: 110
+  },
+  {
+    title: '需返工数量',
+    key: 'quantity',
+    width: 110
+  },
+  {
+    title: '状态',
+    key: 'status_name',
+    width: 100,
+    render: (row: ReworkTask) => {
+      const typeMap: Record<string, string> = {
+        pending: 'warning',
+        submitted: 'info',
+        completed: 'success'
+      }
+      const iconMap: Record<string, any> = {
+        pending: TimeOutline,
+        submitted: ArrowRedoOutline,
+        completed: CheckmarkCircleOutline
+      }
+      return h(
+        NTag,
+        { type: typeMap[row.status] as any },
+        {
+          default: () => [
+            h(NIcon, { size: 14, style: 'margin-right: 4px;' }, { default: () => h(iconMap[row.status]) }),
+            row.status_name
+          ]
+        }
+      )
+    }
+  },
+  {
+    title: '创建时间',
+    key: 'created_at',
+    width: 180,
+    render: (row: ReworkTask) => new Date(row.created_at).toLocaleString('zh-CN')
+  },
+  {
+    title: '操作',
+    key: 'action',
+    width: 120,
+    render: (row: ReworkTask) => {
+      if (row.status !== 'pending') {
+        return h(NTag, { size: 'small', type: 'default' }, { default: () => '已处理' })
+      }
+      return h(
+        NSpace,
+        { size: 8 },
+        {
+          default: () => [
+            h(
+              NButton,
+              {
+                size: 'small',
+                type: 'warning',
+                onClick: () => handleReworkSubmit(row)
+              },
+              { default: () => '返工报工' }
+            )
+          ]
+        }
+      )
+    }
+  }
+]
+
 const reportColumns = [
   {
     title: '工单号',
@@ -190,6 +289,21 @@ const reportColumns = [
     width: 100
   },
   {
+    title: '合格',
+    key: 'passed_quantity',
+    width: 80
+  },
+  {
+    title: '返工',
+    key: 'rework_quantity',
+    width: 80
+  },
+  {
+    title: '报废',
+    key: 'scrapped_quantity',
+    width: 80
+  },
+  {
     title: '状态',
     key: 'status_name',
     width: 100,
@@ -197,12 +311,14 @@ const reportColumns = [
       const typeMap: Record<string, string> = {
         pending: 'warning',
         passed: 'success',
-        rejected: 'error'
+        rejected: 'error',
+        rework: 'info'
       }
       const iconMap: Record<string, any> = {
         pending: TimeOutline,
         passed: CheckmarkCircleOutline,
-        rejected: AlertCircleOutline
+        rejected: AlertCircleOutline,
+        rework: ArrowRedoOutline
       }
       return h(
         NTag,
@@ -285,6 +401,42 @@ async function handleSubmitReport() {
   }
 }
 
+function handleReworkSubmit(task: ReworkTask) {
+  selectedReworkTask.value = task
+  reworkForm.work_order_id = task.work_order
+  reworkForm.work_order_process_id = task.work_order_process
+  reworkForm.rework_task_id = task.id
+  reworkForm.quantity = task.quantity
+  reworkForm.remark = ''
+  showReworkModal.value = true
+}
+
+async function handleSubmitRework() {
+  if (!reworkForm.work_order_id || !reworkForm.work_order_process_id || !reworkForm.quantity || !reworkForm.rework_task_id) {
+    message.warning('请完善报工信息')
+    return
+  }
+
+  try {
+    loading.value = true
+    const data: CreateWorkReportRequest = {
+      work_order_id: reworkForm.work_order_id,
+      work_order_process_id: reworkForm.work_order_process_id,
+      quantity: reworkForm.quantity,
+      remark: reworkForm.remark || undefined,
+      rework_task_id: reworkForm.rework_task_id
+    }
+    await createWorkReport(data)
+    message.success('返工报工提交成功，等待质检')
+    showReworkModal.value = false
+    await loadData()
+  } catch (err: any) {
+    message.error(err.message || '提交失败')
+  } finally {
+    loading.value = false
+  }
+}
+
 async function loadWorkerWorkOrders() {
   try {
     workerWorkOrders.value = await getWorkerWorkOrders()
@@ -301,10 +453,18 @@ async function loadWorkReports() {
   }
 }
 
+async function loadReworkTasks() {
+  try {
+    reworkTasks.value = await getWorkerReworkTasks()
+  } catch (err: any) {
+    message.error('加载返修任务失败')
+  }
+}
+
 async function loadData() {
   loading.value = true
   try {
-    await Promise.all([loadWorkerWorkOrders(), loadWorkReports()])
+    await Promise.all([loadWorkerWorkOrders(), loadWorkReports(), loadReworkTasks()])
   } finally {
     loading.value = false
   }
@@ -318,7 +478,8 @@ function getStatusTagType(status: string) {
   const map: Record<string, string> = {
     pending: 'warning',
     passed: 'success',
-    rejected: 'error'
+    rejected: 'error',
+    rework: 'info'
   }
   return map[status] || 'default'
 }
@@ -327,10 +488,15 @@ function getStatusIcon(status: string) {
   const map: Record<string, any> = {
     pending: TimeOutline,
     passed: CheckmarkCircleOutline,
-    rejected: AlertCircleOutline
+    rejected: AlertCircleOutline,
+    rework: ArrowRedoOutline
   }
   return map[status] || TimeOutline
 }
+
+const pendingReworkCount = computed(() => {
+  return reworkTasks.value.filter(t => t.status === 'pending').length
+})
 
 onMounted(() => {
   loadData()
@@ -426,8 +592,46 @@ onMounted(() => {
             :data="workReports"
             :loading="loading"
             :row-key="(row) => row.id"
+            :row-class-name="(row) => {
+              if (row.has_passed) return 'passed-row'
+              if (row.has_scrap) return 'scrap-row'
+              if (row.status === 'rework') return 'rework-row'
+              return ''
+            }"
             striped
           />
+        </n-card>
+      </n-tab-pane>
+
+      <n-tab-pane name="rework" :tab="`待返修任务 (${pendingReworkCount})`">
+        <n-card class="content-card" :bordered="false">
+          <div class="card-header">
+            <div class="card-title">
+              <n-icon size="20" color="#f59e0b">
+                <arrow-redo-outline />
+              </n-icon>
+              <span>我的返修任务</span>
+            </div>
+            <n-button size="small" :loading="loading" @click="loadData">
+              <template #icon>
+                <n-icon>
+                  <refresh-outline />
+                </n-icon>
+              </template>
+              刷新
+            </n-button>
+          </div>
+
+          <n-data-table
+            v-if="reworkTasks.length > 0"
+            :columns="reworkTaskColumns"
+            :data="reworkTasks"
+            :loading="loading"
+            :row-key="(row) => row.id"
+            striped
+          />
+
+          <n-empty v-else description="暂无返修任务" />
         </n-card>
       </n-tab-pane>
     </n-tabs>
@@ -596,6 +800,98 @@ onMounted(() => {
               </n-icon>
             </template>
             提交报工
+          </n-button>
+        </div>
+      </div>
+    </n-modal>
+
+    <n-modal
+      v-model:show="showReworkModal"
+      preset="card"
+      :title="`${selectedReworkTask?.work_order_no} - 返工报工`"
+      :mask-closable="false"
+      style="width: 600px"
+    >
+      <div v-if="selectedReworkTask" class="report-form-container">
+        <n-descriptions :column="2" bordered size="small">
+          <n-descriptions-item label="工单号">
+            {{ selectedReworkTask.work_order_no }}
+          </n-descriptions-item>
+          <n-descriptions-item label="工序名称">
+            {{ selectedReworkTask.process_name }}
+          </n-descriptions-item>
+          <n-descriptions-item label="原报工数量">
+            {{ selectedReworkTask.original_quantity }} 件
+          </n-descriptions-item>
+          <n-descriptions-item label="需返工数量">
+            <n-tag type="warning" size="large">{{ selectedReworkTask.quantity }} 件</n-tag>
+          </n-descriptions-item>
+        </n-descriptions>
+
+        <n-alert type="warning" class="rework-alert">
+          <template #icon>
+            <n-icon>
+              <alert-circle-outline />
+            </n-icon>
+          </template>
+          请完成返工后提交，系统将自动送质检。最终只按合格件数计费。
+        </n-alert>
+
+        <n-form
+          ref="reworkFormRef"
+          :model="reworkForm"
+          label-placement="top"
+        >
+          <div class="section">
+            <h4 class="section-title">返工完成数量</h4>
+
+            <div class="quantity-input-wrapper">
+              <n-input-number
+                v-model:value="reworkForm.quantity"
+                :min="1"
+                :max="selectedReworkTask.quantity"
+                size="large"
+                class="big-input"
+                placeholder="请输入返工完成数量"
+              />
+              <span class="unit-label">件</span>
+            </div>
+
+            <div class="quick-buttons">
+              <n-button
+                size="small"
+                type="primary"
+                @click="reworkForm.quantity = selectedReworkTask.quantity"
+              >
+                全部完成
+              </n-button>
+            </div>
+
+            <n-form-item label="备注" path="remark">
+              <n-input
+                v-model:value="reworkForm.remark"
+                type="textarea"
+                placeholder="可选：填写返工备注"
+                :autosize="{ minRows: 2, maxRows: 4 }"
+              />
+            </n-form-item>
+          </div>
+        </n-form>
+
+        <div class="modal-footer">
+          <n-button @click="showReworkModal = false">取消</n-button>
+          <n-button
+            type="primary"
+            :loading="loading"
+            :disabled="!reworkForm.quantity"
+            @click="handleSubmitRework"
+          >
+            <template #icon>
+              <n-icon>
+                <send-outline />
+              </n-icon>
+            </template>
+            提交返工
           </n-button>
         </div>
       </div>
@@ -878,5 +1174,21 @@ onMounted(() => {
   justify-content: flex-end;
   gap: 12px;
   margin-top: 8px;
+}
+
+.passed-row {
+  background: #f0fdf4 !important;
+}
+
+.scrap-row {
+  background: #fef2f2 !important;
+}
+
+.rework-row {
+  background: #eff6ff !important;
+}
+
+.rework-alert {
+  margin-bottom: 12px;
 }
 </style>

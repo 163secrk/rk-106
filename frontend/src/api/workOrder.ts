@@ -9,7 +9,11 @@ import type {
   UpdateWorkOrderRequest,
   WorkerWorkOrder,
   WorkReport,
-  CreateWorkReportRequest
+  CreateWorkReportRequest,
+  PendingWorkOrderGroup,
+  InspectorWorkReport,
+  ReworkTask,
+  QualityInspectionRequest
 } from '@/types'
 
 export function getProducts(): Promise<Product[]> {
@@ -66,4 +70,25 @@ export function updateWorkReport(id: number, data: Partial<CreateWorkReportReque
 
 export function deleteWorkReport(id: number): Promise<void> {
   return del<void>(`/workreports/${id}/`)
+}
+
+export function getInspectorPendingList(): Promise<PendingWorkOrderGroup[]> {
+  return get<PendingWorkOrderGroup[]>('/inspector/pending/')
+}
+
+export function getInspectorHistoryList(): Promise<InspectorWorkReport[]> {
+  return get<InspectorWorkReport[]>('/inspector/history/')
+}
+
+export function submitQualityInspection(id: number, data: QualityInspectionRequest): Promise<WorkReport> {
+  return post<WorkReport>(`/workreports/${id}/inspect/`, data)
+}
+
+export function getWorkerReworkTasks(status?: string): Promise<ReworkTask[]> {
+  const url = status ? `/worker/rework-tasks/?status=${status}` : '/worker/rework-tasks/'
+  return get<ReworkTask[]>(url)
+}
+
+export function getWorkerReworkTaskDetail(id: number): Promise<ReworkTask> {
+  return get<ReworkTask>(`/worker/rework-tasks/${id}/`)
 }

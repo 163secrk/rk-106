@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.db.models import Sum
-from .models import Product, Process, WorkOrder, WorkOrderProcess, WorkReport
+from .models import Product, Process, WorkOrder, WorkOrderProcess, WorkReport, ReworkTask
 
 User = get_user_model()
 
@@ -171,9 +171,13 @@ class WorkOrderListSerializer(serializers.ModelSerializer):
 class WorkReportSerializer(serializers.ModelSerializer):
     work_order_no = serializers.CharField(source='work_order.order_no', read_only=True)
     process_name = serializers.CharField(source='work_order_process.process.name', read_only=True)
+    process_price = serializers.SerializerMethodField()
     worker_name = serializers.CharField(source='worker.name', read_only=True)
     status_name = serializers.CharField(source='get_status_display', read_only=True)
     inspector_name = serializers.CharField(source='inspector.name', read_only=True, allow_null=True)
+    has_scrap = serializers.SerializerMethodField()
+    salary_amount = serializers.SerializerMethodField()
+
     work_order_id = serializers.PrimaryKeyRelatedField(
         queryset=WorkOrder.objects.all(),
         write_only=True,
@@ -184,17 +188,97 @@ class WorkReportSerializer(serializers.ModelSerializer):
         write_only=True,
         source='work_order_process'
     )
+    rework_task_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
 
     class Meta:
         model = WorkReport
         fields = [
             'id', 'work_order', 'work_order_id', 'work_order_no',
-            'work_order_process', 'work_order_process_id', 'process_name',
-            'worker', 'worker_name', 'quantity', 'status', 'status_name',
+            'work_order_process', 'work_order_process_id', 'process_name', 'process_price',
+            'worker', 'worker_name', 'quantity', 'passed_quantity', 'rework_quantity', 'scrapped_quantity',
+            'status', 'status_name', 'is_locked', 'parent_report', 'has_scrap', 'salary_amount',
             'inspector', 'inspector_name', 'inspection_time',
-            'inspection_remark', 'remark', 'created_at', 'updated_at'
+            'inspection_remark', 'remark', 'created_at', 'updated_at', 'rework_task_id'
         ]
-        read_only_fields = ['work_order', 'work_order_process', 'worker', 'status', 'inspector', 'inspection_time', 'inspection_remark']
+        read_only_fields = ['work_order', 'work_order_process', 'worker', 'status', 'inspector', 'inspection_time', 'inspection_remark', 'passed_quantity', 'rework_quantity', 'scrapped_quantity', 'is_locked', 'parent_report']
+
+    def get_process_price(self, obj):
+        return float(obj.work_order_process.process.price)
+
+    def get_has_scrap(self, obj):
+        return obj.scrapped_quantity > 0
+
+    def get_salary_amount(self, obj):
+        if obj.status != 'passed':
+            return 0
+        return float(obj.passed_quantity * obj.work_order_process.process.price)
+
+
+class QualityInspectionSerializer(serializers.Serializer):
+    passed_quantity = serializers.IntegerField(min_value=0, required=True)
+    rework_quantity = serializers.IntegerField(min_value=0, required=True)
+    scrapped_quantity = serializers.IntegerField(min_value=0, required=True)
+    inspection_remark = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        report = self.context.get('work_report')
+        if not report:
+            raise serializers.ValidationError('报工记录不存在')
+        
+        if report.status != 'pending' and report.status != 'rework':
+            raise serializers.ValidationError('该报工记录不是待质检状态')
+        
+        total = attrs['passed_quantity'] + attrs['rework_quantity'] + attrs['scrapped_quantity']
+        if total != report.quantity:
+            raise serializers.ValidationError(f'合格+返工+报废数量({total})必须等于报工数量({report.quantity})')
+        
+        return attrs
+
+
+class ReworkTaskSerializer(serializers.ModelSerializer):
+    work_order_no = serializers.CharField(source='work_order.order_no', read_only=True)
+    process_name = serializers.CharField(source='work_order_process.process.name', read_only=True)
+    worker_name = serializers.CharField(source='worker.name', read_only=True)
+    status_name = serializers.CharField(source='get_status_display', read_only=True)
+    original_quantity = serializers.IntegerField(source='work_report.quantity', read_only=True)
+    original_report_id = serializers.IntegerField(source='work_report.id', read_only=True)
+
+    class Meta:
+        model = ReworkTask
+        fields = [
+            'id', 'work_report', 'original_report_id', 'work_order', 'work_order_no',
+            'work_order_process', 'process_name', 'worker', 'worker_name',
+            'quantity', 'status', 'status_name', 'original_quantity',
+            'resubmitted_report', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['work_report', 'work_order', 'work_order_process', 'worker', 'quantity', 'status', 'resubmitted_report']
+
+
+class InspectorWorkReportSerializer(serializers.ModelSerializer):
+    work_order_no = serializers.CharField(source='work_order.order_no', read_only=True)
+    process_name = serializers.CharField(source='work_order_process.process.name', read_only=True)
+    worker_name = serializers.CharField(source='worker.name', read_only=True)
+    status_name = serializers.CharField(source='get_status_display', read_only=True)
+    has_scrap = serializers.SerializerMethodField()
+    has_passed = serializers.SerializerMethodField()
+    product_name = serializers.CharField(source='work_order.product.name', read_only=True)
+    work_order_id = serializers.IntegerField(source='work_order.id', read_only=True)
+
+    class Meta:
+        model = WorkReport
+        fields = [
+            'id', 'work_order_id', 'work_order_no', 'product_name',
+            'process_name', 'worker', 'worker_name', 'quantity',
+            'passed_quantity', 'rework_quantity', 'scrapped_quantity',
+            'status', 'status_name', 'is_locked', 'has_scrap', 'has_passed',
+            'remark', 'created_at'
+        ]
+
+    def get_has_scrap(self, obj):
+        return obj.scrapped_quantity > 0
+
+    def get_has_passed(self, obj):
+        return obj.status == 'passed'
 
     def validate(self, attrs):
         work_order = attrs.get('work_order')
@@ -226,13 +310,29 @@ class WorkReportSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
+        rework_task_id = validated_data.pop('rework_task_id', None)
         validated_data['worker'] = self.context['request'].user
+        
+        if rework_task_id:
+            try:
+                rework_task = ReworkTask.objects.get(id=rework_task_id, worker=validated_data['worker'], status='pending')
+                validated_data['parent_report'] = rework_task.work_report
+                validated_data['status'] = 'rework'
+            except ReworkTask.DoesNotExist:
+                raise serializers.ValidationError('返修任务不存在或已处理')
+        
         work_report = WorkReport.objects.create(**validated_data)
+
+        if rework_task_id:
+            rework_task = ReworkTask.objects.get(id=rework_task_id)
+            rework_task.status = 'submitted'
+            rework_task.resubmitted_report = work_report
+            rework_task.save()
 
         work_order_process = work_report.work_order_process
         total_reported = WorkReport.objects.filter(
             work_order_process=work_order_process,
-            status__in=['pending', 'passed']
+            status__in=['pending', 'passed', 'rework']
         ).aggregate(total=Sum('quantity'))['total'] or 0
         work_order_process.reported_quantity = total_reported
         work_order_process.save()

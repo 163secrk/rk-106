@@ -2,7 +2,9 @@ export type RoleType = 'admin' | 'team_leader' | 'worker' | 'inspector'
 
 export type WorkOrderStatus = 'pending' | 'in_progress' | 'completed'
 
-export type WorkReportStatus = 'pending' | 'passed' | 'rejected'
+export type WorkReportStatus = 'pending' | 'passed' | 'rejected' | 'rework'
+
+export type ReworkTaskStatus = 'pending' | 'submitted' | 'completed'
 
 export interface UserInfo {
   id: number
@@ -143,14 +145,24 @@ export interface WorkerWorkOrder {
 export interface WorkReport {
   id: number
   work_order: number
+  work_order_id: number
   work_order_no: string
   work_order_process: number
   process_name: string
+  process_price: number
   worker: number
   worker_name: string
   quantity: number
+  passed_quantity: number
+  rework_quantity: number
+  scrapped_quantity: number
   status: WorkReportStatus
   status_name: string
+  is_locked: boolean
+  parent_report: number | null
+  has_scrap: boolean
+  has_passed: boolean
+  salary_amount: number
   inspector: number | null
   inspector_name: string | null
   inspection_time: string | null
@@ -165,4 +177,61 @@ export interface CreateWorkReportRequest {
   work_order_process_id: number
   quantity: number
   remark?: string
+  rework_task_id?: number
+}
+
+export interface InspectorWorkReport {
+  id: number
+  work_order_id: number
+  work_order_no: string
+  product_name: string
+  process_name: string
+  worker: number
+  worker_name: string
+  quantity: number
+  passed_quantity: number
+  rework_quantity: number
+  scrapped_quantity: number
+  status: WorkReportStatus
+  status_name: string
+  is_locked: boolean
+  has_scrap: boolean
+  has_passed: boolean
+  remark: string
+  created_at: string
+}
+
+export interface PendingWorkOrderGroup {
+  work_order_id: number
+  work_order_no: string
+  product_name: string
+  product_spec: string
+  total_quantity: number
+  reports: InspectorWorkReport[]
+}
+
+export interface ReworkTask {
+  id: number
+  work_report: number
+  original_report_id: number
+  work_order: number
+  work_order_no: string
+  work_order_process: number
+  process_name: string
+  worker: number
+  worker_name: string
+  quantity: number
+  status: ReworkTaskStatus
+  status_name: string
+  original_quantity: number
+  resubmitted_report: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface QualityInspectionRequest {
+  passed_quantity: number
+  rework_quantity: number
+  scrapped_quantity: number
+  inspection_remark?: string
 }

@@ -8,7 +8,12 @@ from .views import (
     WorkOrderViewSet,
     WorkerListView,
     WorkerWorkOrderListView,
-    WorkReportViewSet
+    WorkReportViewSet,
+    InspectorPendingListView,
+    InspectorHistoryListView,
+    QualityInspectionView,
+    WorkerReworkTaskListView,
+    WorkerReworkTaskDetailView
 )
 
 router = DefaultRouter()
@@ -22,5 +27,10 @@ urlpatterns = [
     path('userinfo/', UserInfoView.as_view(), name='userinfo'),
     path('workers/', WorkerListView.as_view(), name='worker-list'),
     path('worker/workorders/', WorkerWorkOrderListView.as_view(), name='worker-workorder-list'),
+    path('inspector/pending/', InspectorPendingListView.as_view(), name='inspector-pending-list'),
+    path('inspector/history/', InspectorHistoryListView.as_view(), name='inspector-history-list'),
+    path('workreports/<int:pk>/inspect/', QualityInspectionView.as_view(), name='workreport-inspect'),
+    path('worker/rework-tasks/', WorkerReworkTaskListView.as_view(), name='worker-rework-task-list'),
+    path('worker/rework-tasks/<int:pk>/', WorkerReworkTaskDetailView.as_view(), name='worker-rework-task-detail'),
     path('', include(router.urls)),
 ]
