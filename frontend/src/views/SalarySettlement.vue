@@ -443,6 +443,9 @@ const settlementDetailColumns: DataTableColumns<any> = [
 async function loadFilterOptions() {
   try {
     filterOptions.value = await getSalaryFilterOptions()
+    if (filterOptions.value?.current_month && !filterForm.month) {
+      filterForm.month = filterOptions.value.current_month
+    }
   } catch (err) {
     message.error('加载筛选选项失败')
   }
@@ -476,11 +479,12 @@ async function loadSettlements() {
 }
 
 async function loadAll() {
-  await Promise.all([loadFilterOptions(), loadSalarySummary(), loadSettlements()])
+  await loadFilterOptions()
+  await Promise.all([loadSalarySummary(), loadSettlements()])
 }
 
 function handleResetFilter() {
-  filterForm.month = ''
+  filterForm.month = filterOptions.value?.current_month || ''
   filterForm.worker_id = 0
   filterForm.work_order_id = 0
   filterForm.process_id = 0

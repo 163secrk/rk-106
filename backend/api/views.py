@@ -3,7 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
-from django.contrib.auth import authenticate
+from django.contrib.auth import authenticate, get_user_model
 from django.utils import timezone
 from django.db.models import Sum, Value, CharField, IntegerField, FloatField
 from django.db.models.functions import Concat
@@ -740,23 +740,25 @@ class SalarySummaryView(APIView):
         result = []
         for w_id, worker_groups in grouped.items():
             worker_total_passed = 0
-            worker_total_amount = 0.0
+            worker_total_amount = Decimal('0')
             details = []
             worker_report_count = 0
+            worker_values_list = list(worker_groups.values())
 
-            for key, detail in worker_groups.values():
-                detail['final_amount'] = float(Decimal(str(detail['subtotal'])).quantize(Decimal('0.00'), rounding=ROUND_HALF_UP))
+            for detail in worker_values_list:
+                subtotal_dec = Decimal(str(detail['subtotal']))
+                detail['final_amount'] = float(subtotal_dec.quantize(Decimal('0.00'), rounding=ROUND_HALF_UP))
                 details.append(detail)
                 worker_total_passed += detail['total_passed']
-                worker_total_amount = float((Decimal(str(worker_total_amount)) + Decimal(str(detail['final_amount']))).quantize(Decimal('0.00')))
+                worker_total_amount += Decimal(str(detail['final_amount']))
                 worker_report_count += len(detail['report_ids'])
 
             worker_entry = {
-                'worker_id': list(worker_groups.values())[0]['worker_id'],
-                'worker_name': list(worker_groups.values())[0]['worker_name'],
+                'worker_id': worker_values_list[0]['worker_id'],
+                'worker_name': worker_values_list[0]['worker_name'],
                 'settlement_month': month or '',
                 'total_passed': worker_total_passed,
-                'total_amount': worker_total_amount,
+                'total_amount': float(worker_total_amount.quantize(Decimal('0.00'))),
                 'report_count': worker_report_count,
                 'details': details
             }
@@ -950,6 +952,7 @@ class SalaryFilterOptionsView(APIView):
                 'message': '无权限访问'
             }, status=status.HTTP_403_FORBIDDEN)
 
+        User = get_user_model()
         workers = User.objects.filter(role='worker').values('id', 'name').order_by('name')
         work_orders = WorkOrder.objects.filter(has_report=True).values('id', 'order_no').order_by('-created_at')
         processes = Process.objects.all().values('id', 'name').order_by('id')
