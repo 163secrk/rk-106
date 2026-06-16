@@ -5,13 +5,15 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from django.utils import timezone
-from .models import Product, Process, WorkOrder, WorkOrderProcess
+from .models import Product, Process, WorkOrder, WorkOrderProcess, WorkReport
 from .serializers import (
     UserSerializer,
     ProductSerializer,
     ProcessSerializer,
     WorkOrderSerializer,
-    WorkOrderListSerializer
+    WorkOrderListSerializer,
+    WorkReportSerializer,
+    WorkerWorkOrderSerializer
 )
 
 
@@ -295,4 +297,100 @@ class WorkerListView(APIView):
             'code': 200,
             'message': '成功',
             'data': serializer.data
+        })
+
+
+class WorkerWorkOrderListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        worker = request.user
+        work_orders = WorkOrder.objects.filter(
+            processes__workers=worker,
+            status__in=['pending', 'in_progress']
+        ).distinct().order_by('-created_at')
+        serializer = WorkerWorkOrderSerializer(work_orders, many=True, context={'request': request})
+        return Response({
+            'code': 200,
+            'message': '成功',
+            'data': serializer.data
+        })
+
+
+class WorkReportViewSet(viewsets.ModelViewSet):
+    queryset = WorkReport.objects.all()
+    serializer_class = WorkReportSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = WorkReport.objects.all()
+        worker = self.request.user
+        if worker.role == 'worker':
+            queryset = queryset.filter(worker=worker)
+        elif worker.role == 'inspector':
+            pass
+        return queryset.order_by('-created_at')
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            'code': 200,
+            'message': '成功',
+            'data': serializer.data
+        })
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response({
+            'code': 200,
+            'message': '成功',
+            'data': serializer.data
+        })
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            self.perform_create(serializer)
+            return Response({
+                'code': 200,
+                'message': '报工成功',
+                'data': serializer.data
+            })
+        error_message = list(serializer.errors.values())[0][0] if serializer.errors else '数据验证失败'
+        return Response({
+            'code': 400,
+            'message': error_message,
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial, context={'request': request})
+        if serializer.is_valid():
+            self.perform_update(serializer)
+            return Response({
+                'code': 200,
+                'message': '更新成功',
+                'data': serializer.data
+            })
+        return Response({
+            'code': 400,
+            'message': '数据验证失败',
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.status != 'pending':
+            return Response({
+                'code': 400,
+                'message': '只能删除待质检状态的报工记录'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        self.perform_destroy(instance)
+        return Response({
+            'code': 200,
+            'message': '删除成功'
         })

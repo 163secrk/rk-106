@@ -126,3 +126,31 @@ class WorkOrderProcess(models.Model):
 
     def __str__(self):
         return f'{self.work_order.order_no} - {self.process.name}'
+
+
+class WorkReport(models.Model):
+    STATUS_CHOICES = (
+        ('pending', '待质检'),
+        ('passed', '已通过'),
+        ('rejected', '已驳回'),
+    )
+
+    work_order = models.ForeignKey(WorkOrder, on_delete=models.PROTECT, related_name='reports', verbose_name='工单')
+    work_order_process = models.ForeignKey(WorkOrderProcess, on_delete=models.PROTECT, related_name='reports', verbose_name='工单工序')
+    worker = models.ForeignKey(User, on_delete=models.PROTECT, related_name='work_reports', verbose_name='报工工人')
+    quantity = models.IntegerField(verbose_name='报工数量')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', verbose_name='状态')
+    inspector = models.ForeignKey(User, on_delete=models.PROTECT, related_name='inspected_reports', null=True, blank=True, verbose_name='质检人')
+    inspection_time = models.DateTimeField(null=True, blank=True, verbose_name='质检时间')
+    inspection_remark = models.TextField(blank=True, verbose_name='质检备注')
+    remark = models.TextField(blank=True, verbose_name='报工备注')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+
+    class Meta:
+        verbose_name = '报工记录'
+        verbose_name_plural = verbose_name
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.work_order.order_no} - {self.work_order_process.process.name} - {self.worker.name}'

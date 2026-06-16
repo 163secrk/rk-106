@@ -6,7 +6,10 @@ import type {
   WorkOrder,
   WorkOrderListItem,
   CreateWorkOrderRequest,
-  UpdateWorkOrderRequest
+  UpdateWorkOrderRequest,
+  WorkerWorkOrder,
+  WorkReport,
+  CreateWorkReportRequest
 } from '@/types'
 
 export function getProducts(): Promise<Product[]> {
@@ -39,4 +42,28 @@ export function updateWorkOrder(id: number, data: UpdateWorkOrderRequest): Promi
 
 export function deleteWorkOrder(id: number): Promise<void> {
   return del<void>(`/workorders/${id}/`)
+}
+
+export function getWorkerWorkOrders(): Promise<WorkerWorkOrder[]> {
+  return get<WorkerWorkOrder[]>('/worker/workorders/')
+}
+
+export function getWorkReports(): Promise<WorkReport[]> {
+  return get<WorkReport[]>('/workreports/')
+}
+
+export function getWorkReportDetail(id: number): Promise<WorkReport> {
+  return get<WorkReport>(`/workreports/${id}/`)
+}
+
+export function createWorkReport(data: CreateWorkReportRequest): Promise<WorkReport> {
+  return post<WorkReport>('/workreports/', data)
+}
+
+export function updateWorkReport(id: number, data: Partial<CreateWorkReportRequest>): Promise<WorkReport> {
+  return put<WorkReport>(`/workreports/${id}/`, data)
+}
+
+export function deleteWorkReport(id: number): Promise<void> {
+  return del<void>(`/workreports/${id}/`)
 }

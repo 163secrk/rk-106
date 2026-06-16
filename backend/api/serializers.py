@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Product, Process, WorkOrder, WorkOrderProcess
+from django.db.models import Sum
+from .models import Product, Process, WorkOrder, WorkOrderProcess, WorkReport
 
 User = get_user_model()
 
@@ -150,3 +151,130 @@ class WorkOrderListSerializer(serializers.ModelSerializer):
 
     def get_progress(self, obj):
         return obj.get_progress()
+
+
+class WorkReportSerializer(serializers.ModelSerializer):
+    work_order_no = serializers.CharField(source='work_order.order_no', read_only=True)
+    process_name = serializers.CharField(source='work_order_process.process.name', read_only=True)
+    worker_name = serializers.CharField(source='worker.name', read_only=True)
+    status_name = serializers.CharField(source='get_status_display', read_only=True)
+    inspector_name = serializers.CharField(source='inspector.name', read_only=True, allow_null=True)
+    work_order_id = serializers.PrimaryKeyRelatedField(
+        queryset=WorkOrder.objects.all(),
+        write_only=True,
+        source='work_order'
+    )
+    work_order_process_id = serializers.PrimaryKeyRelatedField(
+        queryset=WorkOrderProcess.objects.all(),
+        write_only=True,
+        source='work_order_process'
+    )
+
+    class Meta:
+        model = WorkReport
+        fields = [
+            'id', 'work_order', 'work_order_id', 'work_order_no',
+            'work_order_process', 'work_order_process_id', 'process_name',
+            'worker', 'worker_name', 'quantity', 'status', 'status_name',
+            'inspector', 'inspector_name', 'inspection_time',
+            'inspection_remark', 'remark', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['work_order', 'work_order_process', 'worker', 'status', 'inspector', 'inspection_time', 'inspection_remark']
+
+    def validate(self, attrs):
+        work_order = attrs.get('work_order')
+        work_order_process = attrs.get('work_order_process')
+        quantity = attrs.get('quantity')
+        worker = self.context['request'].user
+
+        if work_order_process.work_order != work_order:
+            raise serializers.ValidationError('工序不属于该工单')
+
+        if not work_order_process.workers.filter(id=worker.id).exists():
+            raise serializers.ValidationError('您没有该工序的报工权限')
+
+        if quantity <= 0:
+            raise serializers.ValidationError('报工数量必须大于0')
+
+        total_reported = WorkReport.objects.filter(
+            work_order=work_order,
+            work_order_process=work_order_process,
+            status__in=['pending', 'passed']
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+
+        remaining = work_order.quantity - total_reported
+        if quantity > remaining:
+            raise serializers.ValidationError(
+                f'超出工单数量，剩余可报{remaining}件'
+            )
+
+        return attrs
+
+    def create(self, validated_data):
+        validated_data['worker'] = self.context['request'].user
+        work_report = WorkReport.objects.create(**validated_data)
+
+        work_order_process = work_report.work_order_process
+        total_reported = WorkReport.objects.filter(
+            work_order_process=work_order_process,
+            status__in=['pending', 'passed']
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+        work_order_process.reported_quantity = total_reported
+        work_order_process.save()
+
+        work_order = work_report.work_order
+        work_order.has_report = True
+        work_order.save()
+        work_order.update_status()
+
+        return work_report
+
+
+class WorkerWorkOrderProcessSerializer(serializers.ModelSerializer):
+    process_name = serializers.CharField(source='process.name', read_only=True)
+    process_price = serializers.DecimalField(source='process.price', max_digits=10, decimal_places=2, read_only=True)
+    total_reported = serializers.SerializerMethodField()
+    remaining = serializers.SerializerMethodField()
+    progress_percent = serializers.SerializerMethodField()
+
+    class Meta:
+        model = WorkOrderProcess
+        fields = [
+            'id', 'process_name', 'process_price', 'reported_quantity',
+            'passed_quantity', 'total_reported', 'remaining', 'progress_percent'
+        ]
+
+    def get_total_reported(self, obj):
+        return WorkReport.objects.filter(
+            work_order_process=obj,
+            status__in=['pending', 'passed']
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+
+    def get_remaining(self, obj):
+        total_reported = self.get_total_reported(obj)
+        return max(0, obj.work_order.quantity - total_reported)
+
+    def get_progress_percent(self, obj):
+        if obj.work_order.quantity <= 0:
+            return 0
+        total_reported = self.get_total_reported(obj)
+        return int((total_reported / obj.work_order.quantity) * 100)
+
+
+class WorkerWorkOrderSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source='product.name', read_only=True)
+    product_spec = serializers.CharField(source='product.spec', read_only=True)
+    status_name = serializers.CharField(source='get_status_display', read_only=True)
+    processes = serializers.SerializerMethodField()
+
+    class Meta:
+        model = WorkOrder
+        fields = [
+            'id', 'order_no', 'product_name', 'product_spec', 'quantity',
+            'deadline', 'status', 'status_name', 'created_at', 'processes'
+        ]
+
+    def get_processes(self, obj):
+        worker = self.context['request'].user
+        worker_processes = obj.processes.filter(workers=worker)
+        return WorkerWorkOrderProcessSerializer(worker_processes, many=True, context=self.context).data

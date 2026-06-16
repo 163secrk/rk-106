@@ -2,6 +2,8 @@ export type RoleType = 'admin' | 'team_leader' | 'worker' | 'inspector'
 
 export type WorkOrderStatus = 'pending' | 'in_progress' | 'completed'
 
+export type WorkReportStatus = 'pending' | 'passed' | 'rejected'
+
 export interface UserInfo {
   id: number
   username: string
@@ -113,3 +115,54 @@ export interface CreateWorkOrderRequest {
 }
 
 export interface UpdateWorkOrderRequest extends Partial<CreateWorkOrderRequest> {}
+
+export interface WorkerWorkOrderProcess {
+  id: number
+  process_name: string
+  process_price: number
+  reported_quantity: number
+  passed_quantity: number
+  total_reported: number
+  remaining: number
+  progress_percent: number
+}
+
+export interface WorkerWorkOrder {
+  id: number
+  order_no: string
+  product_name: string
+  product_spec: string
+  quantity: number
+  deadline: string
+  status: WorkOrderStatus
+  status_name: string
+  created_at: string
+  processes: WorkerWorkOrderProcess[]
+}
+
+export interface WorkReport {
+  id: number
+  work_order: number
+  work_order_no: string
+  work_order_process: number
+  process_name: string
+  worker: number
+  worker_name: string
+  quantity: number
+  status: WorkReportStatus
+  status_name: string
+  inspector: number | null
+  inspector_name: string | null
+  inspection_time: string | null
+  inspection_remark: string
+  remark: string
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateWorkReportRequest {
+  work_order_id: number
+  work_order_process_id: number
+  quantity: number
+  remark?: string
+}
