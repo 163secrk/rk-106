@@ -586,8 +586,7 @@ class InspectorPendingListView(APIView):
             }, status=status.HTTP_403_FORBIDDEN)
 
         pending_reports = WorkReport.objects.filter(
-            status__in=['pending', 'rework'],
-            is_locked=False
+            status__in=['pending', 'rework']
         ).select_related('work_order', 'work_order_process', 'worker', 'work_order__product')
 
         grouped_data = {}
@@ -687,14 +686,16 @@ class QualityInspectionView(APIView):
         work_report.inspection_remark = remark
         work_report.inspector = request.user
         work_report.inspection_time = timezone.now()
-        work_report.is_locked = True
 
         if scrapped_qty > 0 and rework_qty == 0 and passed_qty == 0:
             work_report.status = 'rejected'
+            work_report.is_locked = True
         elif rework_qty > 0:
             work_report.status = 'rework'
+            work_report.is_locked = False
         else:
             work_report.status = 'passed'
+            work_report.is_locked = True
 
         work_report.save()
 
@@ -1113,7 +1114,7 @@ class DashboardStatsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if request.user.role not in ['admin', 'team_leader']:
+        if request.user.role not in ['admin', 'team_leader', 'inspector']:
             return Response({
                 'code': 403,
                 'message': '无权限访问'

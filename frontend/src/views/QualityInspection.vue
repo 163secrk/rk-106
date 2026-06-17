@@ -151,6 +151,37 @@ const workOrderColumns = [
         default: () => `${row.reports.length} 条`
       })
     }
+  },
+  {
+    title: '操作',
+    key: 'action',
+    width: 140,
+    render: (row: PendingWorkOrderGroup) => {
+      const isExpanded = expandedRowKeys.value.includes(row.work_order_id)
+      return h(
+        NSpace,
+        { size: 8 },
+        {
+          default: () => [
+            h(
+              NButton,
+              {
+                size: 'small',
+                type: 'primary',
+                onClick: () => {
+                  if (isExpanded) {
+                    expandedRowKeys.value = expandedRowKeys.value.filter(id => id !== row.work_order_id)
+                  } else {
+                    expandedRowKeys.value = [...expandedRowKeys.value, row.work_order_id]
+                  }
+                }
+              },
+              { default: () => isExpanded ? '收起' : '查看质检' }
+            )
+          ]
+        }
+      )
+    }
   }
 ]
 
