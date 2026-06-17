@@ -125,9 +125,6 @@ const isOverLimit = computed(() => {
 
 const workOrderColumns = [
   {
-    type: 'expand' as const
-  },
-  {
     title: '工单号',
     key: 'order_no',
     width: 160

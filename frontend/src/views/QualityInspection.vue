@@ -125,9 +125,6 @@ const inspectFormRules: FormRules = {
 
 const workOrderColumns = [
   {
-    type: 'expand' as const
-  },
-  {
     title: '工单号',
     key: 'work_order_no',
     width: 160

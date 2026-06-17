@@ -243,6 +243,70 @@ class WorkReportSerializer(serializers.ModelSerializer):
             return 0
         return float(obj.passed_quantity * obj.work_order_process.process.price)
 
+    def validate(self, attrs):
+        work_order = attrs.get('work_order')
+        work_order_process = attrs.get('work_order_process')
+        quantity = attrs.get('quantity')
+        worker = self.context['request'].user
+
+        if work_order_process.work_order != work_order:
+            raise serializers.ValidationError('工序不属于该工单')
+
+        if not work_order_process.workers.filter(id=worker.id).exists():
+            raise serializers.ValidationError('您没有该工序的报工权限')
+
+        if quantity <= 0:
+            raise serializers.ValidationError('报工数量必须大于0')
+
+        total_reported = WorkReport.objects.filter(
+            work_order=work_order,
+            work_order_process=work_order_process,
+            status__in=['pending', 'passed']
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+
+        remaining = work_order.quantity - total_reported
+        if quantity > remaining:
+            raise serializers.ValidationError(
+                f'超出工单数量，剩余可报{remaining}件'
+            )
+
+        return attrs
+
+    def create(self, validated_data):
+        rework_task_id = validated_data.pop('rework_task_id', None)
+        validated_data['worker'] = self.context['request'].user
+
+        if rework_task_id:
+            try:
+                rework_task = ReworkTask.objects.get(id=rework_task_id, worker=validated_data['worker'], status='pending')
+                validated_data['parent_report'] = rework_task.work_report
+                validated_data['status'] = 'rework'
+            except ReworkTask.DoesNotExist:
+                raise serializers.ValidationError('返修任务不存在或已处理')
+
+        work_report = WorkReport.objects.create(**validated_data)
+
+        if rework_task_id:
+            rework_task = ReworkTask.objects.get(id=rework_task_id)
+            rework_task.status = 'submitted'
+            rework_task.resubmitted_report = work_report
+            rework_task.save()
+
+        work_order_process = work_report.work_order_process
+        total_reported = WorkReport.objects.filter(
+            work_order_process=work_order_process,
+            status__in=['pending', 'passed', 'rework']
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+        work_order_process.reported_quantity = total_reported
+        work_order_process.save()
+
+        work_order = work_report.work_order
+        work_order.has_report = True
+        work_order.save()
+        work_order.update_status()
+
+        return work_report
+
 
 class QualityInspectionSerializer(serializers.Serializer):
     passed_quantity = serializers.IntegerField(min_value=0, required=True)
