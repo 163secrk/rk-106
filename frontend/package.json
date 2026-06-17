@@ -9,11 +9,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@types/sortablejs": "^1.15.9",
     "@vicons/ionicons5": "^0.13.0",
     "axios": "^1.18.0",
     "echarts": "^6.1.0",
     "naive-ui": "^2.44.1",
     "pinia": "^3.0.4",
+    "sortablejs": "^1.15.7",
     "vue": "^3.5.34",
     "vue-router": "^4.6.4"
   },

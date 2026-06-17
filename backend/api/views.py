@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate, get_user_model
 from django.utils import timezone
-from django.db.models import Sum, Value, CharField, IntegerField, FloatField, Count, Q, F
+from django.db.models import Sum, Value, CharField, IntegerField, FloatField, Count, Q, F, Max
 from django.db.models.functions import Concat, TruncDate
 from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
@@ -202,7 +202,8 @@ class ProductProcessViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_404_NOT_FOUND)
 
         data = request.data.copy()
-        max_order = ProductProcess.objects.filter(product=product).aggregate(max_order=Count('id'))['max_order'] or 0
+        current_max = ProductProcess.objects.filter(product=product).aggregate(max_order=Max('order_index'))['max_order']
+        max_order = current_max + 1 if current_max is not None else 0
         data['order_index'] = request.data.get('order_index', max_order)
 
         serializer = self.get_serializer(data=data)
@@ -220,9 +221,8 @@ class ProductProcessViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_400_BAD_REQUEST)
 
     def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
         instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
         if serializer.is_valid():
             self.perform_update(serializer)
             return Response({

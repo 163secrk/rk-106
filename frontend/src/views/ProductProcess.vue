@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, h } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, h, watch, nextTick } from 'vue'
+import Sortable from 'sortablejs'
 import {
   NCard, NButton, NIcon, NDataTable, NTag, NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, NSpace, NPopconfirm, NEmpty, NGrid, NGridItem, NAlert, useMessage, NBadge, NTabs, NTabPane
 } from 'naive-ui'
@@ -61,6 +62,9 @@ const editProcessFormRef = ref<FormInst | null>(null)
 
 const currentEditProductId = ref<number | null>(null)
 const currentEditProcessId = ref<number | null>(null)
+
+const processTableRef = ref<HTMLElement | null>(null)
+let sortableInstance: Sortable | null = null
 
 const createProductForm = reactive({
   name: '',
@@ -400,6 +404,83 @@ function handleSelectProduct(productId: number) {
   selectedProductId.value = productId
 }
 
+function initDragSort() {
+  destroyDragSort()
+  nextTick(() => {
+    if (!processTableRef.value) return
+    const tbody = processTableRef.value.querySelector('tbody')
+    if (!tbody) return
+
+    if (typeof Sortable?.create !== 'function') {
+      console.error('Sortable.create is not available')
+      return
+    }
+
+    sortableInstance = Sortable.create(tbody, {
+      handle: 'tr',
+      draggable: 'tr',
+      animation: 150,
+      onEnd: handleDragEnd
+    })
+  })
+}
+
+function destroyDragSort() {
+  if (sortableInstance) {
+    sortableInstance.destroy()
+    sortableInstance = null
+  }
+}
+
+async function handleDragEnd(evt: Sortable.SortableEvent) {
+  const { oldIndex, newIndex } = evt
+  if (oldIndex === undefined || newIndex === undefined || oldIndex === newIndex) return
+  if (selectedProductId.value === null) return
+
+  const processes = [...selectedProductProcesses.value]
+  const draggedItem = processes.splice(oldIndex, 1)[0]
+  processes.splice(newIndex, 0, draggedItem)
+
+  const updateData = processes.map((p, idx) => ({
+    id: p.id,
+    order_index: idx,
+    unit_price: p.unit_price
+  }))
+
+  try {
+    await batchUpdateProductProcesses(selectedProductId.value, { processes: updateData })
+    message.success('排序已更新')
+    await loadData()
+  } catch (e: any) {
+    message.error(e.message || '排序失败')
+    await loadData()
+  }
+}
+
+watch(selectedProductId, () => {
+  nextTick(() => {
+    if (selectedProductProcesses.value.length > 0) {
+      initDragSort()
+    } else {
+      destroyDragSort()
+    }
+  })
+})
+
+watch(products, () => {
+  nextTick(() => {
+    if (selectedProductProcesses.value.length > 0) {
+      initDragSort()
+    } else {
+      destroyDragSort()
+    }
+  })
+}, { deep: true })
+
+onUnmounted(() => {
+  destroyDragSort()
+})
+
 function openCreateProductModal() {
   createProductForm.name = ''
   createProductForm.code = ''
@@ -738,15 +819,16 @@ onMounted(() => {
               </n-alert>
 
               <n-spin :show="loading">
-                <n-data-table
-                  v-if="selectedProductProcesses.length > 0"
-                  :columns="productProcessColumns"
-                  :data="selectedProductProcesses"
-                  :row-key="(row) => row.id"
-                  size="small"
-                  :single-line="false"
-                  striped
-                />
+                <div ref="processTableRef">
+                  <n-data-table
+                    v-if="selectedProductProcesses.length > 0"
+                    :columns="productProcessColumns"
+                    :data="selectedProductProcesses"
+                    :row-key="(row) => row.id"
+                    size="small"
+                    :single-line="false"
+                    striped
+                  />
                 <n-empty
                   v-else
                   description="该产品暂无工序配置"
@@ -760,6 +842,7 @@ onMounted(() => {
                     </n-button>
                   </template>
                 </n-empty>
+                </div>
               </n-spin>
             </template>
 
