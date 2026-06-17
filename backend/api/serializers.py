@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.db.models import Sum
-from .models import Product, Process, WorkOrder, WorkOrderProcess, WorkReport, ReworkTask, SalarySettlement, SalarySettlementDetail
+from .models import Product, Process, ProductProcess, WorkOrder, WorkOrderProcess, WorkReport, ReworkTask, SalarySettlement, SalarySettlementDetail
 
 User = get_user_model()
 
@@ -12,6 +12,36 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'name', 'role', 'role_name']
+
+
+class ProductProcessSerializer(serializers.ModelSerializer):
+    process_name = serializers.CharField(source='process.name', read_only=True)
+    process_code = serializers.CharField(source='process.code', read_only=True)
+    process_default_price = serializers.DecimalField(source='process.price', max_digits=10, decimal_places=2, read_only=True)
+    process_id = serializers.PrimaryKeyRelatedField(
+        queryset=Process.objects.all(),
+        write_only=True,
+        source='process'
+    )
+
+    class Meta:
+        model = ProductProcess
+        fields = [
+            'id', 'process_id', 'process_name', 'process_code', 'process_default_price',
+            'order_index', 'unit_price', 'created_at'
+        ]
+
+
+class ProductWithProcessesSerializer(serializers.ModelSerializer):
+    processes = ProductProcessSerializer(source='product_processes', many=True, read_only=True)
+    process_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Product
+        fields = ['id', 'name', 'code', 'spec', 'created_at', 'processes', 'process_count']
+
+    def get_process_count(self, obj):
+        return obj.product_processes.count()
 
 
 class ProductSerializer(serializers.ModelSerializer):

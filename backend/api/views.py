@@ -10,10 +10,12 @@ from django.db.models.functions import Concat, TruncDate
 from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from collections import defaultdict
-from .models import Product, Process, WorkOrder, WorkOrderProcess, WorkReport, ReworkTask, SalarySettlement, SalarySettlementDetail
+from .models import Product, Process, ProductProcess, WorkOrder, WorkOrderProcess, WorkReport, ReworkTask, SalarySettlement, SalarySettlementDetail
 from .serializers import (
     UserSerializer,
     ProductSerializer,
+    ProductWithProcessesSerializer,
+    ProductProcessSerializer,
     ProcessSerializer,
     WorkOrderSerializer,
     WorkOrderListSerializer,
@@ -91,12 +93,16 @@ class UserInfoView(APIView):
 
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all()
-    serializer_class = ProductSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return ProductWithProcessesSerializer
+        return ProductSerializer
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
+        serializer = ProductWithProcessesSerializer(queryset, many=True)
         return Response({
             'code': 200,
             'message': '成功',
@@ -146,10 +152,135 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
+        if WorkOrder.objects.filter(product=instance).exists():
+            return Response({
+                'code': 400,
+                'message': '该产品已有生产工单，不能删除'
+            }, status=status.HTTP_400_BAD_REQUEST)
         self.perform_destroy(instance)
         return Response({
             'code': 200,
             'message': '删除成功'
+        })
+
+
+class ProductProcessViewSet(viewsets.ModelViewSet):
+    queryset = ProductProcess.objects.all()
+    serializer_class = ProductProcessSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        product_id = self.request.query_params.get('product_id')
+        if product_id:
+            queryset = queryset.filter(product_id=product_id)
+        return queryset
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            'code': 200,
+            'message': '成功',
+            'data': serializer.data
+        })
+
+    def create(self, request, *args, **kwargs):
+        product_id = request.data.get('product_id')
+        if not product_id:
+            return Response({
+                'code': 400,
+                'message': '请提供产品ID'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            product = Product.objects.get(id=product_id)
+        except Product.DoesNotExist:
+            return Response({
+                'code': 404,
+                'message': '产品不存在'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        data = request.data.copy()
+        max_order = ProductProcess.objects.filter(product=product).aggregate(max_order=Count('id'))['max_order'] or 0
+        data['order_index'] = request.data.get('order_index', max_order)
+
+        serializer = self.get_serializer(data=data)
+        if serializer.is_valid():
+            serializer.save(product=product)
+            return Response({
+                'code': 200,
+                'message': '添加工序成功',
+                'data': serializer.data
+            })
+        return Response({
+            'code': 400,
+            'message': '数据验证失败',
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        if serializer.is_valid():
+            self.perform_update(serializer)
+            return Response({
+                'code': 200,
+                'message': '更新成功',
+                'data': serializer.data
+            })
+        return Response({
+            'code': 400,
+            'message': '数据验证失败',
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response({
+            'code': 200,
+            'message': '删除成功'
+        })
+
+
+class ProductProcessBatchUpdateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, product_id):
+        try:
+            product = Product.objects.get(id=product_id)
+        except Product.DoesNotExist:
+            return Response({
+                'code': 404,
+                'message': '产品不存在'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        processes_data = request.data.get('processes', [])
+        if not isinstance(processes_data, list):
+            return Response({
+                'code': 400,
+                'message': '工序数据格式错误'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        for idx, proc_data in enumerate(processes_data):
+            pp_id = proc_data.get('id')
+            if pp_id:
+                try:
+                    pp = ProductProcess.objects.get(id=pp_id, product=product)
+                    pp.order_index = proc_data.get('order_index', idx)
+                    pp.unit_price = proc_data.get('unit_price', pp.unit_price)
+                    pp.save()
+                except ProductProcess.DoesNotExist:
+                    continue
+
+        product.refresh_from_db()
+        serializer = ProductWithProcessesSerializer(product)
+        return Response({
+            'code': 200,
+            'message': '工序排序更新成功',
+            'data': serializer.data
         })
 
 

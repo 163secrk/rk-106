@@ -39,7 +39,7 @@ class Product(models.Model):
 class Process(models.Model):
     name = models.CharField(max_length=50, verbose_name='工序名称')
     code = models.CharField(max_length=50, unique=True, verbose_name='工序编号')
-    price = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='工价')
+    price = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='默认工价')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
 
     class Meta:
@@ -49,6 +49,23 @@ class Process(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class ProductProcess(models.Model):
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='product_processes', verbose_name='产品')
+    process = models.ForeignKey(Process, on_delete=models.PROTECT, verbose_name='工序')
+    order_index = models.IntegerField(default=0, verbose_name='工序顺序')
+    unit_price = models.DecimalField(max_digits=10, decimal_places=4, default=0, verbose_name='计件单价')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+
+    class Meta:
+        verbose_name = '产品工序'
+        verbose_name_plural = verbose_name
+        ordering = ['product__id', 'order_index']
+        unique_together = ('product', 'process')
+
+    def __str__(self):
+        return f'{self.product.name} - {self.process.name}'
 
 
 class WorkOrder(models.Model):

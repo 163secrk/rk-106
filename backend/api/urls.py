@@ -5,6 +5,8 @@ from .views import (
     UserInfoView,
     ProductViewSet,
     ProcessViewSet,
+    ProductProcessViewSet,
+    ProductProcessBatchUpdateView,
     WorkOrderViewSet,
     WorkerListView,
     WorkerWorkOrderListView,
@@ -26,6 +28,7 @@ from .views import (
 router = DefaultRouter()
 router.register(r'products', ProductViewSet)
 router.register(r'processes', ProcessViewSet)
+router.register(r'product-processes', ProductProcessViewSet)
 router.register(r'workorders', WorkOrderViewSet)
 router.register(r'workreports', WorkReportViewSet)
 
@@ -46,5 +49,6 @@ urlpatterns = [
     path('salary/settlements/<int:pk>/', SalarySettlementDetailView.as_view(), name='salary-settlement-detail'),
     path('workreports/<int:pk>/trace/', WorkReportTraceView.as_view(), name='workreport-trace'),
     path('dashboard/stats/', DashboardStatsView.as_view(), name='dashboard-stats'),
+    path('products/<int:product_id>/processes/batch-update/', ProductProcessBatchUpdateView.as_view(), name='product-processes-batch-update'),
     path('', include(router.urls)),
 ]

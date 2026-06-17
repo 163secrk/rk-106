@@ -2,6 +2,14 @@ import { get, post, put, del } from '@/utils/request'
 import type {
   Product,
   Process,
+  ProductProcessItem,
+  CreateProductRequest,
+  UpdateProductRequest,
+  CreateProcessRequest,
+  UpdateProcessRequest,
+  AddProductProcessRequest,
+  UpdateProductProcessRequest,
+  BatchUpdateProductProcessesRequest,
   User,
   WorkOrder,
   WorkOrderListItem,
@@ -25,8 +33,60 @@ export function getProducts(): Promise<Product[]> {
   return get<Product[]>('/products/')
 }
 
+export function getProductDetail(id: number): Promise<Product> {
+  return get<Product>(`/products/${id}/`)
+}
+
+export function createProduct(data: CreateProductRequest): Promise<Product> {
+  return post<Product>('/products/', data)
+}
+
+export function updateProduct(id: number, data: UpdateProductRequest): Promise<Product> {
+  return put<Product>(`/products/${id}/`, data)
+}
+
+export function deleteProduct(id: number): Promise<void> {
+  return del<void>(`/products/${id}/`)
+}
+
 export function getProcesses(): Promise<Process[]> {
   return get<Process[]>('/processes/')
+}
+
+export function createProcess(data: CreateProcessRequest): Promise<Process> {
+  return post<Process>('/processes/', data)
+}
+
+export function updateProcess(id: number, data: UpdateProcessRequest): Promise<Process> {
+  return put<Process>(`/processes/${id}/`, data)
+}
+
+export function deleteProcess(id: number): Promise<void> {
+  return del<void>(`/processes/${id}/`)
+}
+
+export function getProductProcesses(productId?: number): Promise<ProductProcessItem[]> {
+  const url = productId ? `/product-processes/?product_id=${productId}` : '/product-processes/'
+  return get<ProductProcessItem[]>(url)
+}
+
+export function addProductProcess(data: AddProductProcessRequest): Promise<ProductProcessItem> {
+  return post<ProductProcessItem>('/product-processes/', data)
+}
+
+export function updateProductProcess(id: number, data: UpdateProductProcessRequest): Promise<ProductProcessItem> {
+  return put<ProductProcessItem>(`/product-processes/${id}/`, data)
+}
+
+export function deleteProductProcess(id: number): Promise<void> {
+  return del<void>(`/product-processes/${id}/`)
+}
+
+export function batchUpdateProductProcesses(
+  productId: number,
+  data: BatchUpdateProductProcessesRequest
+): Promise<Product> {
+  return post<Product>(`/products/${productId}/processes/batch-update/`, data)
 }
 
 export function getWorkers(): Promise<User[]> {

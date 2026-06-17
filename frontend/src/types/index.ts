@@ -48,12 +48,25 @@ export interface MenuItem {
   roles: RoleType[]
 }
 
+export interface ProductProcessItem {
+  id: number
+  process_id: number
+  process_name: string
+  process_code: string
+  process_default_price: number
+  order_index: number
+  unit_price: number
+  created_at: string
+}
+
 export interface Product {
   id: number
   name: string
   code: string
   spec: string
   created_at: string
+  processes?: ProductProcessItem[]
+  process_count?: number
 }
 
 export interface Process {
@@ -62,6 +75,42 @@ export interface Process {
   code: string
   price: number
   created_at: string
+}
+
+export interface CreateProductRequest {
+  name: string
+  code: string
+  spec?: string
+}
+
+export interface UpdateProductRequest extends Partial<CreateProductRequest> {}
+
+export interface CreateProcessRequest {
+  name: string
+  code: string
+  price?: number
+}
+
+export interface UpdateProcessRequest extends Partial<CreateProcessRequest> {}
+
+export interface AddProductProcessRequest {
+  product_id: number
+  process_id: number
+  order_index?: number
+  unit_price: number
+}
+
+export interface UpdateProductProcessRequest {
+  order_index?: number
+  unit_price?: number
+}
+
+export interface BatchUpdateProductProcessesRequest {
+  processes: {
+    id: number
+    order_index: number
+    unit_price: number
+  }[]
 }
 
 export interface WorkOrderProcess {
