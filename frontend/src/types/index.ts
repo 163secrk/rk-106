@@ -354,3 +354,46 @@ export interface SalaryFilterOptions {
   months: string[]
   current_month: string
 }
+
+export interface ProcessYieldItem {
+  name: string
+  total: number
+  passed: number
+  yield_rate: number
+}
+
+export interface ProductScrapItem {
+  name: string
+  total: number
+  scrapped: number
+  scrap_rate: number
+}
+
+export interface OrderProgressItem {
+  id: number
+  order_no: string
+  product_name: string
+  quantity: number
+  deadline: string
+  progress: number
+  reported_quantity: number
+  passed_quantity: number
+  is_overdue: boolean
+  process_count: number
+}
+
+export interface DailyTrendItem {
+  date: string
+  count: number
+}
+
+export interface DashboardStats {
+  today_report_count: number
+  pending_inspection_count: number
+  in_progress_order_count: number
+  monthly_salary_total: number
+  process_yield: ProcessYieldItem[]
+  product_scrap: ProductScrapItem[]
+  order_progress: OrderProgressItem[]
+  daily_trend: DailyTrendItem[]
+}

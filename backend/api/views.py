@@ -5,8 +5,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate, get_user_model
 from django.utils import timezone
-from django.db.models import Sum, Value, CharField, IntegerField, FloatField
-from django.db.models.functions import Concat
+from django.db.models import Sum, Value, CharField, IntegerField, FloatField, Count, Q, F
+from django.db.models.functions import Concat, TruncDate
+from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from collections import defaultdict
 from .models import Product, Process, WorkOrder, WorkOrderProcess, WorkReport, ReworkTask, SalarySettlement, SalarySettlementDetail
@@ -973,5 +974,146 @@ class SalaryFilterOptionsView(APIView):
                 'processes': list(processes),
                 'months': month_list,
                 'current_month': current_month
+            }
+        })
+
+
+class DashboardStatsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role not in ['admin', 'team_leader']:
+            return Response({
+                'code': 403,
+                'message': '无权限访问'
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        today = timezone.now().date()
+        current_month = timezone.now().strftime('%Y-%m')
+        year, month_num = timezone.now().year, timezone.now().month
+
+        today_report_count = WorkReport.objects.filter(
+            created_at__date=today
+        ).count()
+
+        pending_inspection_count = WorkReport.objects.filter(
+            status__in=['pending', 'rework'],
+            is_locked=False
+        ).count()
+
+        in_progress_order_count = WorkOrder.objects.filter(
+            status='in_progress'
+        ).count()
+
+        month_passed_reports = WorkReport.objects.filter(
+            status='passed',
+            created_at__year=year,
+            created_at__month=month_num
+        )
+        monthly_salary = month_passed_reports.aggregate(
+            total=Sum(F('passed_quantity') * F('work_order_process__process__price'))
+        )['total']
+        monthly_salary_total = float(monthly_salary or 0)
+
+        process_yield_data = []
+        all_processes = Process.objects.all()
+        for proc in all_processes:
+            reports = WorkReport.objects.filter(
+                work_order_process__process=proc,
+                status__in=['passed', 'rejected', 'rework']
+            )
+            total_qty = reports.aggregate(t=Sum('quantity'))['t'] or 0
+            passed_qty = reports.aggregate(t=Sum('passed_quantity'))['t'] or 0
+            if total_qty > 0:
+                yield_rate = round(passed_qty / total_qty * 100, 1)
+            else:
+                yield_rate = 0
+            process_yield_data.append({
+                'name': proc.name,
+                'total': total_qty,
+                'passed': passed_qty,
+                'yield_rate': yield_rate
+            })
+        process_yield_data.sort(key=lambda x: x['yield_rate'], reverse=True)
+
+        product_scrap_data = []
+        all_products = Product.objects.all()
+        for prod in all_products:
+            reports = WorkReport.objects.filter(
+                work_order__product=prod,
+                status__in=['passed', 'rejected', 'rework']
+            )
+            total_qty = reports.aggregate(t=Sum('quantity'))['t'] or 0
+            scrapped_qty = reports.aggregate(t=Sum('scrapped_quantity'))['t'] or 0
+            if total_qty > 0:
+                scrap_rate = round(scrapped_qty / total_qty * 100, 1)
+            else:
+                scrap_rate = 0
+            if scrapped_qty > 0:
+                product_scrap_data.append({
+                    'name': prod.name,
+                    'total': total_qty,
+                    'scrapped': scrapped_qty,
+                    'scrap_rate': scrap_rate
+                })
+        product_scrap_data.sort(key=lambda x: x['scrap_rate'], reverse=True)
+
+        in_progress_orders = WorkOrder.objects.filter(
+            status='in_progress'
+        ).select_related('product').prefetch_related('processes')
+
+        order_progress_list = []
+        for wo in in_progress_orders:
+            is_overdue = wo.deadline < today
+            total_reported = 0
+            total_target = wo.quantity * wo.processes.count()
+            for op in wo.processes.all():
+                total_reported += min(op.reported_quantity, wo.quantity)
+            progress_pct = int((total_reported / total_target) * 100) if total_target > 0 else 0
+
+            reported_qty = sum(op.reported_quantity for op in wo.processes.all())
+            passed_qty = sum(op.passed_quantity for op in wo.processes.all())
+
+            order_progress_list.append({
+                'id': wo.id,
+                'order_no': wo.order_no,
+                'product_name': wo.product.name,
+                'quantity': wo.quantity,
+                'deadline': wo.deadline.strftime('%Y-%m-%d'),
+                'progress': progress_pct,
+                'reported_quantity': reported_qty,
+                'passed_quantity': passed_qty,
+                'is_overdue': is_overdue,
+                'process_count': wo.processes.count()
+            })
+
+        thirty_days_ago = today - timedelta(days=29)
+        daily_reports = WorkReport.objects.filter(
+            created_at__date__gte=thirty_days_ago
+        ).annotate(day=TruncDate('created_at')).values('day').annotate(
+            count=Count('id')
+        ).order_by('day')
+
+        daily_trend = []
+        date_map = {item['day']: item['count'] for item in daily_reports}
+        for i in range(30):
+            d = thirty_days_ago + timedelta(days=i)
+            daily_trend.append({
+                'date': d.strftime('%m-%d'),
+                'count': date_map.get(d, 0)
+            })
+
+        return Response({
+            'code': 200,
+            'message': '成功',
+            'data': {
+                'today_report_count': today_report_count,
+                'pending_inspection_count': pending_inspection_count,
+                'in_progress_order_count': in_progress_order_count,
+                'monthly_salary_total': monthly_salary_total,
+                'process_yield': process_yield_data,
+                'product_scrap': product_scrap_data,
+                'order_progress': order_progress_list,
+                'daily_trend': daily_trend
             }
         })

@@ -19,7 +19,8 @@ from .views import (
     SalarySettlementListView,
     SalarySettlementDetailView,
     CreateSettlementView,
-    SalaryFilterOptionsView
+    SalaryFilterOptionsView,
+    DashboardStatsView
 )
 
 router = DefaultRouter()
@@ -44,5 +45,6 @@ urlpatterns = [
     path('salary/settlements/create/', CreateSettlementView.as_view(), name='salary-create-settlement'),
     path('salary/settlements/<int:pk>/', SalarySettlementDetailView.as_view(), name='salary-settlement-detail'),
     path('workreports/<int:pk>/trace/', WorkReportTraceView.as_view(), name='workreport-trace'),
+    path('dashboard/stats/', DashboardStatsView.as_view(), name='dashboard-stats'),
     path('', include(router.urls)),
 ]
